@@ -10,6 +10,7 @@
 - Linear Regression
 ---
 ### Model Visualization
+Visualisation using the manim library
 - Each point on the map is a house, with the color representing the difference between the predicted price and the actual price.
 - The color is on a scale from a red to a green.
 - The scale for the color is normalized and used in this function: 
