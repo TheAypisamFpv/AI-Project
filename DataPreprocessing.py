@@ -1,5 +1,7 @@
+from math import ceil
 import pandas as pd
 import numpy as np
+from sklearn.preprocessing import MinMaxScaler
 
 dataSetsPath = 'DataSets/'
 modelDataSetsPath = 'GeneratedDataSet/'
@@ -10,7 +12,7 @@ generalData = pd.read_csv(dataSetsPath + 'general_data.csv')
 employeeSurveyData = pd.read_csv(dataSetsPath + 'employee_survey_data.csv')
 managerSurveyData = pd.read_csv(dataSetsPath + 'manager_survey_data.csv')
 inTime = pd.read_csv(dataSetsPath + 'in_out_time/in_time.csv')
-outTime = pd.read_csv(dataSetsPath + 'in_out_time/out_time.csv')
+outTime = pd.read_csv(dataSetsPath + 'in_out_time/in_time.csv')
 
 # Step 2: Remove any leading/ending whitespaces for each value
 print("Stripping leading/ending whitespaces from all values and column names...")
@@ -53,6 +55,9 @@ requiredColumns = [
 ]
 finalData = mergedData[requiredColumns].copy()
 
+# Ensure Attrition is binary (0 for 'No' and 1 for 'Yes')
+finalData['Attrition'] = finalData['Attrition'].map({'No': 0, 'Yes': 1})
+
 # Step 5: Remove rows with any 'NA' or missing data
 print("Removing rows with any 'NA' or missing data...")
 initialRowCount = finalData.shape[0]
@@ -61,8 +66,71 @@ finalRowCount = finalData.shape[0]
 rowsRemoved = initialRowCount - finalRowCount
 print(f"Number of rows removed due to missing data: {rowsRemoved} ({(rowsRemoved/initialRowCount)*100:.2f}%)")
 
-# Step 6: Save the new CSV
-print("Saving the preprocessed data to ModelDataSet.csv...")
-finalData.to_csv(modelDataSetsPath + 'ModelDataSet.csv', index=False)
+# Step 6: Identify numerical and non-numerical columns
+print("Identifying numerical and non-numerical columns...")
+numericalColumns = []
+nonCumericalColumns = []
 
-print("Done.")
+for column in finalData.columns:
+    if column == 'EmployeeID' or column == 'Attrition':
+        continue
+    
+    # Get first value
+    sample_value = finalData[column].iloc[0]
+    try:
+        float(sample_value)
+        numericalColumns.append(column)
+    except (ValueError, TypeError):
+        nonCumericalColumns.append(column)
+
+print("\nNumerical columns:", numericalColumns)
+print("Non-numerical columns:", nonCumericalColumns)
+
+# Print unique values and normalize non-numerical columns
+print("\nNon-numerical columns unique values and mapping:")
+mappingDict = {}
+for column in nonCumericalColumns:
+    unique_values = finalData[column].unique()
+    n_values = len(unique_values)
+    print(f"\n{column} - {n_values} unique values:")
+    
+    # Create mapping to normalized values between -1 and 1
+    step = 2 / (n_values - 1) if n_values > 1 else 0
+    value_map = {val: -1 + i * step for i, val in enumerate(sorted(unique_values))}
+    
+    # Print mapping
+    for val, normalized in value_map.items():
+        print(f"  {val}: {normalized:.2f}")
+    
+    # Apply mapping
+    finalData[column] = finalData[column].map(value_map)
+    
+    # Add to mapping_dict
+    mappingDict[column] = list(value_map.keys())
+
+# Normalize numerical columns with padding for large values
+print("\nNumerical columns min-max values:")
+for column in numericalColumns:
+    if finalData[column].dtype in [np.float64, np.int64] and finalData[column].max() > 5:  # Apply padding only for large values
+        maxValue = ceil(finalData[column].max() * 1.2)
+        minValue = int(finalData[column].min())
+        print(f"{column} - Min: {minValue}, Max: {maxValue}")
+        finalData[column] = finalData[column] / maxValue
+    else:
+        maxValue = int(finalData[column].max())
+        minValue = int(finalData[column].min())
+        print(f"{column} - Min: {minValue}, Max: {maxValue}")
+        
+    mappingDict[column] = [minValue, maxValue]
+
+scaler = MinMaxScaler(feature_range=(-1, 1))
+finalData[numericalColumns] = scaler.fit_transform(finalData[numericalColumns])
+
+# Save mapping values to a CSV file
+mapping_df = pd.DataFrame([mappingDict])
+mapping_df.to_csv(modelDataSetsPath + 'MappingValues.csv', index=False)
+
+# Save the preprocessed data
+print(f"\nSaving preprocessed data to {modelDataSetsPath}ModelDataSet.csv...")
+finalData.to_csv(modelDataSetsPath + 'ModelDataSet.csv', index=False)
+print("Done")

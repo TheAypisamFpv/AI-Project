@@ -20,7 +20,7 @@
 
 
 ## Requirements
-### Python 3.12.8 
+### Python 3.11.x - 3.12.x
 
 Python can be downloaded from the official website: https://www.python.org/downloads/
 
