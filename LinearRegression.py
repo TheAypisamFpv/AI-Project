@@ -7,9 +7,22 @@ import matplotlib.pyplot as plt
 
 data = pd.read_csv("merged_dataset.csv")
 
+required_columns = [
+    'Age', 'BusinessTravel', 'Department', 'DistanceFromHome', 'Education',
+    'EducationField', 'Gender', 'JobLevel', 'JobRole', 'MaritalStatus',
+    'MonthlyIncome', 'NumCompaniesWorked', 'PercentSalaryHike', 'StockOptionLevel',
+    'TotalWorkingYears', 'TrainingTimesLastYear', 'YearsAtCompany',
+    'YearsSinceLastPromotion', 'YearsWithCurrManager', 'JobInvolvement',
+    'PerformanceRating', 'EnvironmentSatisfaction', 'JobSatisfaction',
+    'WorkLifeBalance', 'AverageHoursWorked'
+]
+missing_columns = [col for col in required_columns if col not in data.columns]
+if missing_columns:
+    raise ValueError(f"Les colonnes suivantes sont manquantes dans le dataset : {missing_columns}")
+
 # Séparer les features (X) et la target (y)
 y = data['Turnover']
-X = data.drop(columns=['Turnover', 'EmployeeID'])
+X = data.drop(columns=[required_columns])
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
