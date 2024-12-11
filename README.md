@@ -20,7 +20,13 @@
 
 
 ## Requirements
-Python 3.10 or higher
+### Python 3.10 or higher
+
+Python can be downloaded from the official website: https://www.python.org/downloads/
+
+- Create a virtual environment using the installed python version
+- Install the required packages using the following command:
+
 ```bash
 pip install -r requirements.txt
 ```
