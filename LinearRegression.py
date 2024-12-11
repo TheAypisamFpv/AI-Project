@@ -6,6 +6,7 @@ from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 
 data = pd.read_csv("GeneratedDataSet\ModelDataSet.csv")
+data.columns = data.columns.str.strip().str.replace(' ', '').str.lower()
 
 required_columns = [
     'Age', 'BusinessTravel', 'Department', 'DistanceFromHome', 'Education',
@@ -23,7 +24,7 @@ if missing_columns:
 
 # Séparer les features (X) et la target (y)
 y = data['Turnover']
-X = data.drop(columns=[required_columns])
+X = data[required_columns]
 
 X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
 
