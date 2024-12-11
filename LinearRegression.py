@@ -5,7 +5,7 @@ from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 
-data = pd.read_csv("merged_dataset.csv")
+data = pd.read_csv("GeneratedDataSet\ModelDataSet.csv")
 
 required_columns = [
     'Age', 'BusinessTravel', 'Department', 'DistanceFromHome', 'Education',
@@ -16,6 +16,7 @@ required_columns = [
     'PerformanceRating', 'EnvironmentSatisfaction', 'JobSatisfaction',
     'WorkLifeBalance', 'AverageHoursWorked'
 ]
+
 missing_columns = [col for col in required_columns if col not in data.columns]
 if missing_columns:
     raise ValueError(f"Les colonnes suivantes sont manquantes dans le dataset : {missing_columns}")
