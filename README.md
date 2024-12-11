@@ -17,3 +17,10 @@
 ![f(x) = \frac{10^x}{10} \cdot x](https://latex.codecogs.com/png.latex?\color{white}f(x)%20=%20\frac{10^x}{10}%20\cdot%20x)
 
 - Then animated over time to show the progression of the model.
+
+
+## Requirements
+Python 3.10 or higher
+```bash
+pip install -r requirements.txt
+```
