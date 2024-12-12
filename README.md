@@ -30,3 +30,9 @@ Python can be downloaded from the official website: https://www.python.org/downl
 ```bash
 pip install -r requirements.txt
 ```
+
+
+# Neural Network
+### Best models as of now:
+`TrainedModel_[25, 16, 8, 1]_100_25_0.6_0.05_tanh_tanh_sigmoid_squared_hinge_Adam(0.005)_0.3`
+can be found in the `models` directory.

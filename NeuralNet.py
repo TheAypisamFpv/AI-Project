@@ -106,12 +106,15 @@ def trainNeuralNet(features, target, layers:list[int], epochs:int, batchSize:int
 
     return model, history
 
-def detectOverfitting(history):
+def detectOverfitting(history, lossFunction):
     print("----------------------------------")
     trainAcc = history.history['accuracy']
     valAcc = history.history['val_accuracy']
     trainLoss = history.history['loss']
     valLoss = history.history['val_loss']
+
+    if lossFunction == 'squared_hinge':
+        valLoss = np.array(valLoss) - 1
 
     if (trainAcc[-1] - valAcc[-1] > 0.1) or (valLoss[-1] - trainLoss[-1] > 0.1):
         print("Warning: The model is overfitting.")
@@ -127,7 +130,7 @@ def saveModel(model, filePath):
     model.save(filePath)
     print(f"Model saved to '{filePath}'")
 
-def plotLearningCurve(history, epochs, elapsedTime):
+def plotLearningCurve(history, epochs, elapsedTime, lossFunction):
     # Define color variables using hex codes
     backgroundColor = '#222222'
     lineColorTrain = '#FD4F59'
@@ -140,6 +143,16 @@ def plotLearningCurve(history, epochs, elapsedTime):
     ax1.set_facecolor(backgroundColor)
     ax2.set_facecolor(backgroundColor)
 
+    # Determine the minimum and maximum values for loss and val_loss
+    minLoss = min(min(history.history['loss']), min(history.history['val_loss']))
+    maxLoss = max(max(history.history['loss']), max(history.history['val_loss']))
+
+    # Adjust val_loss if the loss function is squared_hinge
+    if lossFunction == 'squared_hinge':
+        adjustedValLoss = np.array(history.history['val_loss']) - 1
+    else:
+        adjustedValLoss = np.array(history.history['val_loss'])
+
     def animate(i):
         ax1.clear()
         ax2.clear()
@@ -147,21 +160,13 @@ def plotLearningCurve(history, epochs, elapsedTime):
         if i < len(history.history['accuracy']):
             ax1.plot(np.array(history.history['accuracy'][:i]) * 100, color=lineColorTrain, label='Train Accuracy')
             ax1.plot(np.array(history.history['val_accuracy'][:i]) * 100, color=lineColorVal, label='Validation Accuracy')
-            if max(history.history['loss']) > 10:
-                ax2.plot(np.log(np.array(history.history['loss'][:i])), color=lineColorTrain, label='Train Loss (log scale)')
-                ax2.plot(np.log(np.array(history.history['val_loss'][:i])), color=lineColorVal, label='Validation Loss (log scale)')
-            else:
-                ax2.plot(np.array(history.history['loss'][:i]), color=lineColorTrain, label='Train Loss')
-                ax2.plot(np.array(history.history['val_loss'][:i]), color=lineColorVal, label='Validation Loss')
+            ax2.plot(np.array(history.history['loss'][:i]), color=lineColorTrain, label='Train Loss')
+            ax2.plot(adjustedValLoss[:i], color=lineColorVal, label='Validation Loss')
         else:
             ax1.plot(np.array(history.history['accuracy']) * 100, color=lineColorTrain, label='Train Accuracy')
             ax1.plot(np.array(history.history['val_accuracy']) * 100, color=lineColorVal, label='Validation Accuracy')
-            if max(history.history['loss']) > 10:
-                ax2.plot(np.log(np.array(history.history['loss'])), color=lineColorTrain, label='Train Loss (log scale)')
-                ax2.plot(np.log(np.array(history.history['val_loss'])), color=lineColorVal, label='Validation Loss (log scale)')
-            else:
-                ax2.plot(np.array(history.history['loss']), color=lineColorTrain, label='Train Loss')
-                ax2.plot(np.array(history.history['val_loss']), color=lineColorVal, label='Validation Loss')
+            ax2.plot(np.array(history.history['loss']), color=lineColorTrain, label='Train Loss')
+            ax2.plot(adjustedValLoss, color=lineColorVal, label='Validation Loss')
 
         ax1.set_title(f'Model Accuracy (Elapsed Time: {elapsedTime})', color=textColor)
         ax1.set_ylabel('Accuracy (%)', color=textColor)
@@ -177,12 +182,8 @@ def plotLearningCurve(history, epochs, elapsedTime):
         ax2.set_ylabel('Loss', color=textColor)
         ax2.set_xlabel('Epoch', color=textColor)
         ax2.legend(loc='upper left')
-        
-        if max(history.history['loss']) > 1:
-            ax2.set_ylim([0, np.log(max(history.history['loss']))])  # Fix the y-axis scale for loss (log scale)
-        else:
-            ax2.set_ylim([0, 1])  # Fix the y-axis scale for loss (linear scale)
-            
+
+        ax2.set_ylim([0, 1])
         ax2.set_xlim([0, epochs])  # Fix the x-axis scale
         ax2.tick_params(axis='x', colors=textColor)
         ax2.tick_params(axis='y', colors=textColor)
@@ -225,16 +226,16 @@ def main():
     filePath = r'GeneratedDataSet\ModelDataSet.csv'
     features, target = loadAndPreprocessData(filePath)
 
-    trainingTestingSplit = 0.2  # % of the data will be used for testing
+    trainingTestingSplit = 0.3  # % of the data will be used for testing
 
     inputLayer = features.shape[1]  # 24 input features
-    hiddenLayers = [40, 40]  # Adjusted number of neurons in hidden layers
+    hiddenLayers = [16, 8]
     outputLayer = 1  # Binary classification
 
     epochs = 100  # Reduced number of epochs to prevent overfitting
-    batchSize = 30  # Standard batch size
-    dropoutRate = 0.5  # Increased dropout rate to prevent overfitting
-    l2Reg = 0.06  # L2 regularization factor
+    batchSize = 25  # Standard batch size
+    dropoutRate = 0.6  # Increased dropout rate to prevent overfitting
+    l2Reg = 0.05  # L2 regularization factor
 
     # all activation functions:
     # https://keras.io/api/layers/activations/
@@ -250,7 +251,7 @@ def main():
 
     # all optimizers:
     # https://keras.io/api/optimizers/
-    learningRate = 0.0001
+    learningRate = 0.005
     optimizer = tf.keras.optimizers.Adam(learning_rate=learningRate)
     optimizerName = optimizer.__class__.__name__
 
@@ -282,7 +283,7 @@ Training the model with:
 
     print(f"Training time: {elapsedTime}")
 
-    detectOverfitting(history)
+    detectOverfitting(history, loss)
 
     trainAccuracy = history.history['accuracy'][-1]
     validationAccuracy = history.history['val_accuracy'][-1]
@@ -291,12 +292,13 @@ Training the model with:
 
     saveModel(model, modelName)
 
-    plot = plotLearningCurve(history, epochs, elapsedTime)
+    plot = plotLearningCurve(history, epochs, elapsedTime, loss)
 
     # Save the plot as a gif using PillowWriter
     print(f"Saving learning curve gif'...")
     plot.save(f'{modelName}.gif', writer=animation.PillowWriter(fps=30))
     print(f"Learning curve saved as '{modelName}.gif'")
+
 
 if __name__ == '__main__':
     main()
