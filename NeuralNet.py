@@ -122,7 +122,7 @@ def detectOverfitting(history, lossFunction):
         print("The model is not overfitting.")
     print("----------------------------------")
 
-def saveModel(model, filePath):
+def saveModel(model:tf.keras.model, filePath:str):
     print(f"\nSaving model...")
     if not filePath.endswith('.keras'):
         filePath += '.keras'
@@ -210,7 +210,25 @@ def evaluateModel(model, TestFeatures, actualLabels):
     print(confusion_matrix(actualLabels, predictedLabel))
 
 
-def main():
+def loadModel(modelPath:str):
+    """
+    Load a trained model from the given file path
+    """
+    print(f"\nLoading model from '{modelPath}'...")
+    model = load_model(modelPath)
+    print(f"Model loaded successfully")
+    return model
+
+def predictWithModel(model:tf.keras.Model, features:np.ndarray):
+    """
+    Predict the target variable using the given model and features
+    """
+    print("\nPredicting target variable...")
+    predictions = model.predict(features)
+    return predictions
+
+
+def runModelTraining():
     # Check if TensorFlow is using GPU
     print("")
     physicalDevices = tf.config.list_physical_devices('GPU')
@@ -301,4 +319,4 @@ Training the model with:
 
 
 if __name__ == '__main__':
-    main()
+    runModelTraining()
