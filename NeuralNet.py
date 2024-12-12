@@ -122,7 +122,7 @@ def detectOverfitting(history, lossFunction):
         print("The model is not overfitting.")
     print("----------------------------------")
 
-def saveModel(model:tf.keras.model, filePath:str):
+def saveModel(model:tf.keras.Model, filePath:str):
     print(f"\nSaving model...")
     if not filePath.endswith('.keras'):
         filePath += '.keras'
