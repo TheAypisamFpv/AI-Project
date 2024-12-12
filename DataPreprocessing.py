@@ -2,6 +2,7 @@ from math import ceil
 import pandas as pd
 import numpy as np
 from sklearn.preprocessing import MinMaxScaler
+from datetime import datetime
 
 dataSetsPath = 'DataSets/'
 modelDataSetsPath = 'GeneratedDataSet/'
@@ -12,7 +13,7 @@ generalData = pd.read_csv(dataSetsPath + 'general_data.csv')
 employeeSurveyData = pd.read_csv(dataSetsPath + 'employee_survey_data.csv')
 managerSurveyData = pd.read_csv(dataSetsPath + 'manager_survey_data.csv')
 inTime = pd.read_csv(dataSetsPath + 'in_out_time/in_time.csv')
-outTime = pd.read_csv(dataSetsPath + 'in_out_time/in_time.csv')
+outTime = pd.read_csv(dataSetsPath + 'in_out_time/out_time.csv')
 
 # Step 2: Remove any leading/ending whitespaces for each value
 print("Stripping leading/ending whitespaces from all values and column names...")
@@ -107,6 +108,23 @@ for column in nonCumericalColumns:
     
     # Add to mapping_dict
     mappingDict[column] = list(value_map.keys())
+
+# Calculate average hours worked per day for each employee
+print("Calculating average hours worked per day for each employee...")
+datetime_format = '%Y-%m-%d %H:%M:%S'  # Specify the datetime format
+for column in inTime.columns[1:]:
+    inTime[column] = pd.to_datetime(inTime[column], format=datetime_format, errors='coerce')
+    outTime[column] = pd.to_datetime(outTime[column], format=datetime_format, errors='coerce')
+
+hoursWorked = outTime.iloc[:, 1:].subtract(inTime.iloc[:, 1:]).applymap(lambda x: x.total_seconds() / 3600 if pd.notnull(x) else np.nan)
+averageHoursWorked = hoursWorked.mean(axis=1)
+averageHoursWorked.name = 'AverageHoursWorked'
+
+# Merge average hours worked with the final dataset
+finalData = pd.merge(finalData, averageHoursWorked, left_on='EmployeeID', right_index=True, how='left')
+
+# Add 'AverageHoursWorked' to numerical columns
+numericalColumns.append('AverageHoursWorked')
 
 # Normalize numerical columns with padding for large values
 print("\nNumerical columns min-max values:")
