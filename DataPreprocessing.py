@@ -56,6 +56,8 @@ requiredColumns = [
 ]
 finalData = mergedData[requiredColumns].copy()
 
+finalDataInitialRowCount = finalData.shape[0]
+
 # Ensure Attrition is binary (0 for 'No' and 1 for 'Yes')
 finalData['Attrition'] = finalData['Attrition'].map({'No': 0, 'Yes': 1})
 
@@ -110,11 +112,11 @@ for column in nonCumericalColumns:
     mappingDict[column] = list(value_map.keys())
 
 # Calculate average hours worked per day for each employee
-print("Calculating average hours worked per day for each employee...")
-datetime_format = '%Y-%m-%d %H:%M:%S'  # Specify the datetime format
+print("\nCalculating average hours worked per day for each employee...")
+datetimeFormat = '%Y-%m-%d %H:%M:%S'  # Specify the datetime format
 for column in inTime.columns[1:]:
-    inTime[column] = pd.to_datetime(inTime[column], format=datetime_format, errors='coerce')
-    outTime[column] = pd.to_datetime(outTime[column], format=datetime_format, errors='coerce')
+    inTime[column] = pd.to_datetime(inTime[column], format=datetimeFormat, errors='coerce')
+    outTime[column] = pd.to_datetime(outTime[column], format=datetimeFormat, errors='coerce')
 
 hoursWorked = outTime.iloc[:, 1:].subtract(inTime.iloc[:, 1:]).applymap(lambda x: x.total_seconds() / 3600 if pd.notnull(x) else np.nan)
 averageHoursWorked = hoursWorked.mean(axis=1)
@@ -151,6 +153,21 @@ ordered_mapping_dict = {column: mappingDict[column] for column in finalData.colu
 # Save mapping values to a CSV file
 mapping_df = pd.DataFrame([ordered_mapping_dict])
 mapping_df.to_csv(modelDataSetsPath + 'MappingValues.csv', index=False)
+
+
+# Final check for any missing data (and remove the row where 'AverageHoursWorked' is missing)
+print("\nFinal check for missing data...")
+initialRowCount = finalData.shape[0]
+finalData.dropna(inplace=True)
+finalRowCount = finalData.shape[0]
+rowsRemoved = initialRowCount - finalRowCount
+print(f"Number of rows removed due to missing data: {rowsRemoved} ({(rowsRemoved/initialRowCount)*100:.2f}%)")
+
+
+# Print the removed percentage of rows
+print(f"\nInitial row count: {finalDataInitialRowCount}")
+print(f"Final row count: {finalRowCount}")
+print(f"Percentage of rows removed: {(rowsRemoved/finalDataInitialRowCount)*100:.2f}%")
 
 # Save the preprocessed data
 print(f"\nSaving preprocessed data to {modelDataSetsPath}ModelDataSet.csv...")
