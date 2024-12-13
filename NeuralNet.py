@@ -237,21 +237,16 @@ def loadModel(modelPath:str):
     print(f"Model loaded successfully")
     return model
 
-def predictWithModel(model: tf.keras.Model, features: np.ndarray):
-    """
-    Predict the target variable using the given model and features.
-    Also return the intermediate outputs for visualization.
-    """
-    print("\nPredicting target variable...")
-
-    # Create an intermediate model that outputs the values of all layers
-    intermediate_layer_model = tf.keras.Model(inputs=model.inputs, outputs=[layer.output for layer in model.layers])
-    intermediate_outputs = intermediate_layer_model.predict(features)
-
-    # Get the final prediction
-    predictions = intermediate_outputs[-1]
-
-    return predictions, intermediate_outputs
+def predictWithModel(model, inputData):
+    # Include only input and Dense layers
+    outputs = [layer.output for layer in model.layers if isinstance(layer, tf.keras.layers.Dense)]
+    intermediate_model = tf.keras.Model(inputs=model.inputs, outputs=outputs)
+    # Get the outputs
+    layer_outs = intermediate_model.predict(inputData)
+    # Prepend the input data to layer_outs
+    layer_outs = [inputData] + list(layer_outs)
+    prediction = layer_outs[-1]
+    return prediction, layer_outs
 
 
 def predict_with_model(model, features):
@@ -308,16 +303,16 @@ def runModelTraining():
     filePath = r'GeneratedDataSet\ModelDataSet.csv'
     features, target = loadAndPreprocessData(filePath)
 
-    trainingTestingSplit = 0.2  # % of the data will be used for testing
+    trainingTestingSplit = 0.3  # % of the data will be used for testing
 
     inputLayer = features.shape[1]  # 24 input features
-    hiddenLayers = [24, 24, 24, 16]
+    hiddenLayers = [32, 16, 8]
     outputLayer = 1  # Binary classification
 
     epochs = 100  # Reduced number of epochs to prevent overfitting
-    batchSize = 30  # Standard batch size
-    dropoutRate = 0.4  # Increased dropout rate to prevent overfitting
-    l2Reg = 0.01  # L2 regularization factor
+    batchSize = 20  # Standard batch size
+    dropoutRate = 0.3  # Increased dropout rate to prevent overfitting
+    l2Reg = 0.005  # L2 regularization factor
 
     # all activation functions:
     # https://keras.io/api/layers/activations/
@@ -335,7 +330,7 @@ def runModelTraining():
 
     # all optimizers:
     # https://keras.io/api/optimizers/
-    learningRate = 0.001
+    learningRate = 0.0005
     optimizer = tf.keras.optimizers.Adam(learning_rate=learningRate)
     optimizerName = optimizer.__class__.__name__
 
@@ -389,4 +384,3 @@ Training the model with:
 
 if __name__ == '__main__':
     modelPath = runModelTraining()
-    testModel(modelPath)
