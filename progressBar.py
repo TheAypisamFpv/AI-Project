@@ -1,4 +1,4 @@
-def getProgressBar(completion:float, maxbarLength=20):
+def getProgressBar(completion:float, wheelIndex=None, maxbarLength=20):
     """Generate a progress bar and progress wheel for the given completion percentage.
 
     This function creates a progress bar with a specified number of blocks and partial blocks
@@ -37,8 +37,10 @@ def getProgressBar(completion:float, maxbarLength=20):
 
     progressWheel = ["|", "/", "-", "\\"]
     # use partial block to determine which character to display
-    wheelIndex = int(partialBlock * 4)
-    wheelChar = progressWheel[wheelIndex]
+    if not wheelIndex:
+        wheelIndex = int(partialBlock * 4)
+    
+    wheelChar = progressWheel[wheelIndex % len(progressWheel)]
 
     bar = bar.ljust(maxbarLength)
-    return f"Progress: [{bar}] {completionPercent}% {wheelChar}"
+    return f"Progress: [{bar}] {completionPercent:>6}%  {wheelChar}  "
