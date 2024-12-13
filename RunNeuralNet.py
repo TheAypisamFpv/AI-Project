@@ -172,10 +172,7 @@ class NeuralNetApp:
 
             inputData.append(0)
 
-        print("Normalized input data:", inputData)  # Debug print
         prediction, intermediateOutputs = predictWithModel(self.model, np.array([inputData]))
-        print("Prediction:", prediction)  # Debug print
-        print("Intermediate outputs:", intermediateOutputs)  # Debug print
         return prediction, intermediateOutputs
 
     def interpolateColor(self, colorA, colorB, factor:float):
@@ -274,7 +271,7 @@ class NeuralNetApp:
                 textRect = textSurface.get_rect(center=(int(x), int(y)))
                 screen.blit(textSurface, textRect)
  
-    def mainLoop(self):
+    def mainLoop(self, visualisation=False):
         while self.running:
             # Fill background
             self.screen.fill(self.BACKGROUND_COLOR)
@@ -418,7 +415,8 @@ class NeuralNetApp:
                             sqrtPrediction = np.sqrt(prediction[0][0])
                             predictionConfidence = abs((sqrtPrediction - 0.5) *200)
                             predictionSurface = self.font.render(f"Prediction: {predictionText} ({predictionConfidence:.2f}%)", True, self.TEXT_COLOR)
-                            self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
+                            if visualisation:
+                                self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
 
                         predictionY = (self.screen.get_height() - predictionSurface.get_height()) / 2
                         self.screen.blit(predictionSurface, (self.screen.get_width() - predictionSurface.get_width() - 10, predictionY))
@@ -434,7 +432,8 @@ class NeuralNetApp:
                             sqrtPrediction = np.sqrt(prediction[0][0])
                             predictionConfidence = abs((sqrtPrediction - 0.5) *200)
                             predictionSurface = self.font.render(f"Prediction: {predictionText} ({predictionConfidence:.2f}%)", True, self.TEXT_COLOR)
-                            self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
+                            if visualisation:
+                                self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
 
                         predictionY = (self.screen.get_height() - predictionSurface.get_height()) / 2
                         self.screen.blit(predictionSurface, (self.screen.get_width() - predictionSurface.get_width() - 10, predictionY))
