@@ -4,6 +4,7 @@ import numpy as np
 from sklearn.model_selection import train_test_split
 from sklearn.preprocessing import MinMaxScaler, LabelEncoder
 from sklearn.metrics import classification_report, confusion_matrix
+from sklearn.utils.class_weight import compute_class_weight
 
 import tensorflow as tf
 from tensorflow.keras.models import load_model # type: ignore
@@ -49,57 +50,72 @@ def loadAndPreprocessData(filePath: str):
 
     return features, target
 
-def buildNeuralNetModel(layers:list[int], inputActivation:str, hiddenActivation:str, outputActivation:str, loss:str, optimizer:str, dropoutRate:float=0.5, l2_reg:float=0.01):
+def buildNeuralNetModel(layers:list[int], inputActivation:str, hiddenActivation:str, outputActivation:str, metrics:list, loss:str, optimizer:str, dropoutRate:float=0.5, l2_reg:float=0.01):
     """
     Build a neural network model with the given layers
     """
-
     model = Sequential()
     
-    # Add input layer with L2 regularization
-    model.add(Dense(layers[0], input_dim=layers[0], activation=inputActivation, kernel_regularizer=l2(l2_reg)))
+    # Add input layer with Input layer
+    model.add(tf.keras.layers.Input(shape=(layers[0],)))
+    model.add(Dense(layers[1], activation=inputActivation, kernel_regularizer=l2(l2_reg)))
+    model.add(Dropout(dropoutRate))
     
     # Add hidden layers with dropout and L2 regularization
-    for neurons in layers[1:-1]:
+    for neurons in layers[2:-1]:
         model.add(Dense(neurons, activation=hiddenActivation, kernel_regularizer=l2(l2_reg)))
         model.add(Dropout(dropoutRate))
         
     # Add output layer
-    model.add(Dense(1, activation=outputActivation, kernel_regularizer=l2(l2_reg)))  # Change to 1 neuron for binary classification
-
+    model.add(Dense(layers[-1], activation=outputActivation, kernel_regularizer=l2(l2_reg)))
+    
     # Compile the model
-    model.compile(loss=loss, optimizer=optimizer, metrics=['accuracy'])
+    model.compile(loss=loss, optimizer=optimizer, metrics=metrics)
     return model
 
-def trainNeuralNet(features, target, layers:list[int], epochs:int, batchSize:int, inputActivation:str='relu', hiddenActivation:str='relu', outputActivation:str='sigmoid', loss:str='binary_crossentropy',  optimizer:str='adam', dropoutRate:float=0.5, trainingTestingSplit:float=0.2, l2_reg:float=0.01):
+def trainNeuralNet(features, target, layers:list[int], epochs:int, batchSize:int, inputActivation:str='relu', hiddenActivation:str='relu', outputActivation:str='sigmoid', metrics:list=['Accuracy'], loss:str='binary_crossentropy',  optimizer:str='adam', dropoutRate:float=0.5, trainingTestingSplit:float=0.2, l2_reg:float=0.01):
     """
     Train a neural network model on the given dataset
     """
     # Split the data into training and testing sets
-    TrainingFeatures, TestFeatures, trainingLabels, testLabels = train_test_split(features, target, test_size=trainingTestingSplit)
+    TrainingFeatures, TestFeatures, trainingLabels, testLabels = train_test_split(features, target, test_size=trainingTestingSplit, random_state=42, stratify=target)
 
     # Reset index of training labels
     trainingLabels = trainingLabels.reset_index(drop=True)
 
-    # Check for class imbalance and calculate class weights
-    classWeights = None
-    if len(np.unique(trainingLabels)) > 1:
-        classWeights = {0: (1 / np.bincount(trainingLabels)[0]), 1: (1 / np.bincount(trainingLabels)[1])}
-        print(f"Class weights: {classWeights}")
+    # Compute class weights using sklearn
+    classes = np.unique(trainingLabels)
+    class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=trainingLabels)
+    classWeights = {cls: weight for cls, weight in zip(classes, class_weights)}
+    print(f"Computed class weights: {classWeights}")
 
     # Build the model
-    model = buildNeuralNetModel(layers=layers, inputActivation=inputActivation, hiddenActivation=hiddenActivation, outputActivation=outputActivation, loss=loss, optimizer=optimizer, dropoutRate=dropoutRate, l2_reg=l2_reg)
+    model = buildNeuralNetModel(layers=layers, inputActivation=inputActivation, hiddenActivation=hiddenActivation, outputActivation=outputActivation, metrics=metrics, loss=loss, optimizer=optimizer, dropoutRate=dropoutRate, l2_reg=l2_reg)
 
     # Early stopping callback
-    # early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+    early_stopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
 
     # Train the model
     print("Training the model...")
-    history = model.fit(TrainingFeatures, trainingLabels, epochs=epochs, batch_size=batchSize, validation_split=0.2, verbose=1, class_weight=classWeights)
+    history = model.fit(
+        TrainingFeatures,
+        trainingLabels,
+        epochs=epochs,
+        batch_size=batchSize,
+        validation_split=trainingTestingSplit,
+        verbose=1,
+        class_weight=classWeights,
+        callbacks=[early_stopping]
+    )
 
     # Evaluate the model
-    loss, accuracy = model.evaluate(TestFeatures, testLabels)
-    print(f'Accuracy: {accuracy * 100:.2f}%')
+    results = model.evaluate(TestFeatures, testLabels)
+    results_dict = dict(zip(model.metrics_names, results))
+    Accuracy = results_dict.get('Accuracy', None)
+    if Accuracy is not None:
+        print(f'Accuracy: {Accuracy * 100:.2f}%')
+    else:
+        print('Accuracy metric is not available.')
 
     # Additional evaluation
     evaluateModel(model, TestFeatures, testLabels)
@@ -108,8 +124,8 @@ def trainNeuralNet(features, target, layers:list[int], epochs:int, batchSize:int
 
 def detectOverfitting(history, lossFunction):
     print("----------------------------------")
-    trainAcc = history.history['accuracy']
-    valAcc = history.history['val_accuracy']
+    trainAcc = history.history['Accuracy']
+    valAcc = history.history['val_Accuracy']
     trainLoss = history.history['loss']
     valLoss = history.history['val_loss']
 
@@ -129,6 +145,7 @@ def saveModel(model:tf.keras.Model, filePath:str):
 
     model.save(filePath)
     print(f"Model saved to '{filePath}'")
+    return filePath
 
 def plotLearningCurve(history, epochs, elapsedTime, lossFunction):
     # Define color variables using hex codes
@@ -157,14 +174,14 @@ def plotLearningCurve(history, epochs, elapsedTime, lossFunction):
         ax1.clear()
         ax2.clear()
 
-        if i < len(history.history['accuracy']):
-            ax1.plot(np.array(history.history['accuracy'][:i]) * 100, color=lineColorTrain, label='Train Accuracy')
-            ax1.plot(np.array(history.history['val_accuracy'][:i]) * 100, color=lineColorVal, label='Validation Accuracy')
+        if i < len(history.history['Accuracy']):
+            ax1.plot(np.array(history.history['Accuracy'][:i]) * 100, color=lineColorTrain, label='Train Accuracy')
+            ax1.plot(np.array(history.history['val_Accuracy'][:i]) * 100, color=lineColorVal, label='Validation Accuracy')
             ax2.plot(np.array(history.history['loss'][:i]), color=lineColorTrain, label='Train Loss')
             ax2.plot(adjustedValLoss[:i], color=lineColorVal, label='Validation Loss')
         else:
-            ax1.plot(np.array(history.history['accuracy']) * 100, color=lineColorTrain, label='Train Accuracy')
-            ax1.plot(np.array(history.history['val_accuracy']) * 100, color=lineColorVal, label='Validation Accuracy')
+            ax1.plot(np.array(history.history['Accuracy']) * 100, color=lineColorTrain, label='Train Accuracy')
+            ax1.plot(np.array(history.history['val_Accuracy']) * 100, color=lineColorVal, label='Validation Accuracy')
             ax2.plot(np.array(history.history['loss']), color=lineColorTrain, label='Train Loss')
             ax2.plot(adjustedValLoss, color=lineColorVal, label='Validation Loss')
 
@@ -172,7 +189,7 @@ def plotLearningCurve(history, epochs, elapsedTime, lossFunction):
         ax1.set_ylabel('Accuracy (%)', color=textColor)
         ax1.set_xlabel('Epoch', color=textColor)
         ax1.legend(loc='upper left')
-        ax1.set_ylim([0, 100])  # Fix the y-axis scale for accuracy
+        ax1.set_ylim([0, 100])  # Fix the y-axis scale for Accuracy
         ax1.set_xlim([0, epochs])  # Fix the x-axis scale
         ax1.tick_params(axis='x', colors=textColor)
         ax1.tick_params(axis='y', colors=textColor)
@@ -193,7 +210,7 @@ def plotLearningCurve(history, epochs, elapsedTime, lossFunction):
     pauseFrames = 5 * 30  # 5 seconds at 30 fps
 
     # Use the length of the history data for frames plus the pause frames
-    ani = animation.FuncAnimation(fig, animate, frames=len(history.history['accuracy']) + pauseFrames, interval=50, repeat=False)
+    ani = animation.FuncAnimation(fig, animate, frames=len(history.history['Accuracy']) + pauseFrames, interval=50, repeat=False)
 
     # Adjust layout to prevent overlap
     plt.subplots_adjust(hspace=0.4, top=0.9, bottom=0.1)
@@ -202,8 +219,9 @@ def plotLearningCurve(history, epochs, elapsedTime, lossFunction):
 
     return ani
 
-def evaluateModel(model, TestFeatures, actualLabels):
-    predictedLabel = (model.predict(TestFeatures) > 0.5).astype("int32")
+def evaluateModel(model, TestFeatures, actualLabels, threshold=0.3):
+    predictedProb = model.predict(TestFeatures)
+    predictedLabel = (predictedProb > threshold).astype("int32")
     print("Classification Report:")
     print(classification_report(actualLabels, predictedLabel, zero_division=0))
     print("Confusion Matrix:")
@@ -219,13 +237,59 @@ def loadModel(modelPath:str):
     print(f"Model loaded successfully")
     return model
 
-def predictWithModel(model:tf.keras.Model, features:np.ndarray):
+def predictWithModel(model: tf.keras.Model, features: np.ndarray):
     """
-    Predict the target variable using the given model and features
+    Predict the target variable using the given model and features.
+    Also return the intermediate outputs for visualization.
+    """
+    print("\nPredicting target variable...")
+
+    # Create an intermediate model that outputs the values of all layers
+    intermediate_layer_model = tf.keras.Model(inputs=model.inputs, outputs=[layer.output for layer in model.layers])
+    intermediate_outputs = intermediate_layer_model.predict(features)
+
+    # Get the final prediction
+    predictions = intermediate_outputs[-1]
+
+    return predictions, intermediate_outputs
+
+
+def predict_with_model(model, features):
+    """
+    return the predicted value
     """
     print("\nPredicting target variable...")
     predictions = model.predict(features)
     return predictions
+
+def testModel(modelPath):
+    print("Testing the model\n")
+    model = loadModel(modelPath)
+
+    print(f"\nLoding and preprocessing data...")
+    features, target = loadAndPreprocessData(r'D:/Cesi/Ripo/Cesi/FISE3/4_AI/AI-Project/GeneratedDataSet/ModelDataSet.csv')
+
+    # Select one sample where Attrition=1
+    sample_one = features[target == 1].iloc[0]
+    # Select one sample where Attrition=0
+    sample_zero = features[target == 0].iloc[0]
+
+    # Prepare the samples for prediction
+    sample_one_array = sample_one.values.reshape(1, -1)
+    sample_zero_array = sample_zero.values.reshape(1, -1)
+
+    print("Predicting with the model...")
+    # Make predictions
+    print("with data:", sample_one_array)
+    prediction_one = predict_with_model(model, sample_one_array)
+    print()
+    print("with data:", sample_zero_array)
+    prediction_zero = predict_with_model(model, sample_zero_array)
+
+    # Print predictions
+    print(f"Predicted Attrition: {prediction_one[0][0]:.2f} (Expected: near 1)")
+    print(f"Predicted Attrition: {prediction_zero[0][0]:.2f} (Expected: near 0)")
+
 
 
 def runModelTraining():
@@ -244,16 +308,16 @@ def runModelTraining():
     filePath = r'GeneratedDataSet\ModelDataSet.csv'
     features, target = loadAndPreprocessData(filePath)
 
-    trainingTestingSplit = 0.3  # % of the data will be used for testing
+    trainingTestingSplit = 0.2  # % of the data will be used for testing
 
     inputLayer = features.shape[1]  # 24 input features
-    hiddenLayers = [16, 8]
+    hiddenLayers = [24, 24, 24, 16]
     outputLayer = 1  # Binary classification
 
     epochs = 100  # Reduced number of epochs to prevent overfitting
-    batchSize = 25  # Standard batch size
-    dropoutRate = 0.6  # Increased dropout rate to prevent overfitting
-    l2Reg = 0.05  # L2 regularization factor
+    batchSize = 30  # Standard batch size
+    dropoutRate = 0.4  # Increased dropout rate to prevent overfitting
+    l2Reg = 0.01  # L2 regularization factor
 
     # all activation functions:
     # https://keras.io/api/layers/activations/
@@ -262,14 +326,16 @@ def runModelTraining():
     hiddenActivation = 'tanh'
     outputActivation = 'sigmoid'
 
+    metrics = ['precision', 'Accuracy']
+
     # all loss functions:
     # https://keras.io/api/losses/
 
-    loss = 'squared_hinge'
+    loss = 'binary_crossentropy'
 
     # all optimizers:
     # https://keras.io/api/optimizers/
-    learningRate = 0.005
+    learningRate = 0.001
     optimizer = tf.keras.optimizers.Adam(learning_rate=learningRate)
     optimizerName = optimizer.__class__.__name__
 
@@ -290,12 +356,12 @@ Training the model with:
 
     layers = [inputLayer] + hiddenLayers + [outputLayer]
 
-    modelDirectory = f'Models\\TrainedModel_{layers}_{epochs}_{batchSize}_{dropoutRate}_{l2Reg}_{inputActivation}_{hiddenActivation}_{outputActivation}_{loss}_{optimizerName}({learningRate})_{trainingTestingSplit}\\'
+    modelDirectory = f'Models\\TrainedModel_{layers}_{epochs}_{batchSize}_{dropoutRate}_{l2Reg}_{inputActivation}_{hiddenActivation}_{outputActivation}_{metrics}_{loss}_{optimizerName}({learningRate})_{trainingTestingSplit}\\'
     # Create the directory if it does not exist
     os.makedirs(os.path.dirname(modelDirectory), exist_ok=True)
 
     startTrainingTime = pd.Timestamp.now()
-    model, history = trainNeuralNet(features=features, target=target, layers=layers, epochs=epochs, batchSize=batchSize, inputActivation=inputActivation, hiddenActivation=hiddenActivation, outputActivation=outputActivation, loss=loss, optimizer=optimizer, dropoutRate=dropoutRate, trainingTestingSplit=trainingTestingSplit, l2_reg=l2Reg)
+    model, history = trainNeuralNet(features=features, target=target, layers=layers, epochs=epochs, batchSize=batchSize, inputActivation=inputActivation, hiddenActivation=hiddenActivation, outputActivation=outputActivation, metrics=metrics, loss=loss, optimizer=optimizer, dropoutRate=dropoutRate, trainingTestingSplit=trainingTestingSplit, l2_reg=l2Reg)
     endTrainingTime = pd.Timestamp.now()
     elapsedTime = endTrainingTime - startTrainingTime
 
@@ -303,12 +369,12 @@ Training the model with:
 
     detectOverfitting(history, loss)
 
-    trainAccuracy = history.history['accuracy'][-1]
-    validationAccuracy = history.history['val_accuracy'][-1]
+    trainAccuracy = history.history['Accuracy'][-1]
+    validationAccuracy = history.history['val_Accuracy'][-1]
 
     modelName = modelDirectory + f"Model_{trainAccuracy:.2f}_{validationAccuracy:.2f}_{elapsedTime.total_seconds()}s"
 
-    saveModel(model, modelName)
+    savePath = saveModel(model, modelName)
 
     plot = plotLearningCurve(history, epochs, elapsedTime, loss)
 
@@ -317,6 +383,10 @@ Training the model with:
     plot.save(f'{modelName}.gif', writer=animation.PillowWriter(fps=30))
     print(f"Learning curve saved as '{modelName}.gif'")
 
+    # return model path
+    return savePath
+
 
 if __name__ == '__main__':
-    runModelTraining()
+    modelPath = runModelTraining()
+    testModel(modelPath)

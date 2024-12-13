@@ -144,8 +144,12 @@ for column in numericalColumns:
 scaler = MinMaxScaler(feature_range=(-1, 1))
 finalData[numericalColumns] = scaler.fit_transform(finalData[numericalColumns])
 
+
+# Reorder mappingDict to match the order of columns in finalData
+ordered_mapping_dict = {column: mappingDict[column] for column in finalData.columns if column in mappingDict}
+
 # Save mapping values to a CSV file
-mapping_df = pd.DataFrame([mappingDict])
+mapping_df = pd.DataFrame([ordered_mapping_dict])
 mapping_df.to_csv(modelDataSetsPath + 'MappingValues.csv', index=False)
 
 # Save the preprocessed data
