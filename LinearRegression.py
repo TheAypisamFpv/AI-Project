@@ -44,7 +44,6 @@ linear_regression = LinearRegression()
 best_model = runGridSearch(linear_regression, param_grid, Training_data, train_labels)
 
 y_pred = best_model.predict(Test_data)
-
 mse = mean_squared_error(test_labels, y_pred)
 r2 = r2_score(test_labels, y_pred)
 
