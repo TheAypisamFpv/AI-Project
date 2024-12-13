@@ -51,6 +51,7 @@ print("\n=== Résultats de la régression linéaire ===")
 print(f"Erreur quadratique moyenne (MSE) : {mse:.2f}")
 print(f"Coefficient de détermination (R²) : {r2:.2f}")
 
+
 coefficients = pd.DataFrame({
     'Feature': Input_features.columns,
     'Coefficient': best_model.coef_
