@@ -47,7 +47,6 @@ y_pred = best_model.predict(Test_data)
 mse = mean_squared_error(test_labels, y_pred)
 r2 = r2_score(test_labels, y_pred)
 
-
 print("\n=== Résultats de la régression linéaire ===")
 print(f"Erreur quadratique moyenne (MSE) : {mse:.2f}")
 print(f"Coefficient de détermination (R²) : {r2:.2f}")
