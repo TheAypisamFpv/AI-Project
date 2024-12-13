@@ -525,7 +525,7 @@ def predictWithModel2(model, features):
     return predictions
 
 
-def runGridSearch(features, target, paramGrid: dict):
+def runGridSearch(features, target, paramGrid:dict):
     """Perform a grid search to find the best combination of hyperparameters.
 
     This function tests various combinations of neural network architectures and training parameters
