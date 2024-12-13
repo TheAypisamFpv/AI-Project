@@ -41,7 +41,6 @@ param_grid = {
 # Utiliser LinearRegression pour la recherche par grille
 linear_regression = LinearRegression()
 
-# Exécuter la recherche par grille
 best_model = runGridSearch(linear_regression, param_grid, Training_data, train_labels)
 
 y_pred = best_model.predict(Test_data)
