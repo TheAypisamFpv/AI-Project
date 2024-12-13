@@ -1,10 +1,15 @@
 import pandas as pd
 import numpy as np
-from sklearn.model_selection import train_test_split
+from sklearn.model_selection import train_test_split, GridSearchCV
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
+
+def runGridSearch(model, param_grid, X_train, y_train):
+    grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring='neg_mean_squared_error')
+    grid_search.fit(X_train, y_train)
+    return grid_search.best_estimator_
 
 data = pd.read_csv(r"GeneratedDataSet\ModelDataSet.csv")
 data.columns = data.columns.str.strip().str.replace(' ', '').str.lower()
@@ -26,11 +31,20 @@ print(train_labels.head())
 print("\n=== Labels de test ===")
 print(test_labels.head())
 
-# Utiliser LinearRegression
-model = LinearRegression()
-model.fit(Training_data, train_labels)
+# Définir une grille de paramètres pour la recherche par grille
+param_grid = {
+    'fit_intercept': [True, False],
+    'copy_X': [True, False],
+    'positive': [True, False]
+}
 
-y_pred = model.predict(Test_data)
+# Utiliser LinearRegression pour la recherche par grille
+linear_regression = LinearRegression()
+
+# Exécuter la recherche par grille
+best_model = runGridSearch(linear_regression, param_grid, Training_data, train_labels)
+
+y_pred = best_model.predict(Test_data)
 
 mse = mean_squared_error(test_labels, y_pred)
 r2 = r2_score(test_labels, y_pred)
@@ -41,7 +55,7 @@ print(f"Coefficient de détermination (R²) : {r2:.2f}")
 
 coefficients = pd.DataFrame({
     'Feature': Input_features.columns,
-    'Coefficient': model.coef_
+    'Coefficient': best_model.coef_
 })
 print("\n=== Coefficients du modèle ===")
 print(coefficients.sort_values(by='Coefficient', ascending=False))
