@@ -33,6 +33,6 @@ pip install -r requirements.txt
 
 
 # Neural Network
-### Best models as of now:
-`TrainedModel_[25, 16, 8, 1]_100_25_0.6_0.05_tanh_tanh_sigmoid_squared_hinge_Adam(0.005)_0.3`
+### Best models as of now (Accuracy:0.95 loss:0.080):
+`TrainedModel_[25, 512, 256, 128, 1]_100_32_0.3_0.001_relu_relu_sigmoid_Accuracy_mean_squared_error_Adam(0.0005)_0.2`
 can be found in the `models` directory.

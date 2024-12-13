@@ -1,12 +1,11 @@
-import os
-import csv
-import pygame
-from tkinter import Tk, filedialog
 from NeuralNet import predictWithModel, loadModel
-import numpy as np
+from tkinter import Tk, filedialog
 import tensorflow as tf
+import numpy as np
 import threading
-
+import difflib
+import pygame
+import csv
 class NeuralNetApp:
     def __init__(self):
         # Colors
@@ -57,20 +56,27 @@ class NeuralNetApp:
         self.mapping = self.loadModelFeaturesMapping()
 
         # Threading for predictions
-        self.prediction_thread = None
-        self.prediction_lock = threading.Lock()
-        self.prediction_ready = False
+        self.predictionThread = None
+        self.predictionLock = threading.Lock()
+        self.predictionReady = False
 
         # Store last valid prediction
-        self.last_prediction = None
-        self.last_intermediateOutputs = None
+        self.lastPrediction = None
+        self.lastIntermediateOutputs = None
 
         # Variables for text selection
-        self.selected_text = ""
-        self.selection_start = None
-        self.selection_end = None
+        self.selectedText = ""
+        self.selectionStart = None
+        self.selectionEnd = None
+
+        # Connection width settings
+        self.MIN_CONNECTION_WIDTH = 1
+        self.MAX_CONNECTION_WIDTH = 7
 
     def loadModelFeaturesMapping(self):
+        """
+        Load the mapping values for the model features from a CSV file.
+        """
         mapping = {}
         with open('GeneratedDataSet/MappingValues.csv', mode='r') as infile:
             reader = csv.reader(infile)
@@ -83,13 +89,19 @@ class NeuralNetApp:
         return mapping
 
     def selectModelFile(self):
+        """
+        Open a file dialog to select a model file.
+        """
         root = Tk()
         root.withdraw()  # Hide the root window
-        file_path = filedialog.askopenfilename(title="Select Model File", filetypes=[("Model Files", "*.keras"), ("All Files", "*.*")])
+        filePath = filedialog.askopenfilename(title="Select Model File", filetypes=[("Model Files", "*.keras"), ("All Files", "*.*")])
         root.destroy()
-        return file_path
+        return filePath
 
     def wrapText(self, text, font, maxWidth):
+        """
+        Wrap text to fit within a given width.
+        """
         words = text.split(' ')
         lines = []
         currentLine = []
@@ -111,20 +123,26 @@ class NeuralNetApp:
         return lines
 
     def getPredictionThread(self):
-        with self.prediction_lock:
-            if self.prediction_ready:
+        """
+        Thread function to get a prediction from the model.
+        """
+        with self.predictionLock:
+            if self.predictionReady:
                 return
-            self.prediction_ready = True
+            self.predictionReady = True
 
         prediction, intermediateOutputs = self.getPrediction()
-        with self.prediction_lock:
+        with self.predictionLock:
             self.prediction = prediction
             self.intermediateOutputs = intermediateOutputs
-            self.last_prediction = prediction
-            self.last_intermediateOutputs = intermediateOutputs
-            self.prediction_ready = False
+            self.lastPrediction = prediction
+            self.lastIntermediateOutputs = intermediateOutputs
+            self.predictionReady = False
 
     def getPrediction(self):
+        """
+        Parse input values and get a prediction from the model.
+        """
         inputData = []
         for inputName, inputValue in self.inputValues.items():
             if not inputValue:
@@ -143,8 +161,9 @@ class NeuralNetApp:
             elif isinstance(inputMapping[0], str):
                 inputMapping = [str(val).lower() for val in inputMapping]
                 inputValue = inputValue.lower()
-                if inputValue in inputMapping:
-                    normalizedValue = (inputMapping.index(inputValue) / (len(inputMapping) - 1)) * 2 - 1
+                closestMatch = difflib.get_close_matches(inputValue, inputMapping, n=1, cutoff=0.1)
+                if closestMatch:
+                    normalizedValue = (inputMapping.index(closestMatch[0]) / (len(inputMapping) - 1)) * 2 - 1
                     normalizedValue = max(-1, min(1, normalizedValue))
                     inputData.append(normalizedValue)
                     continue
@@ -153,110 +172,141 @@ class NeuralNetApp:
 
             inputData.append(0)
 
-        print("Input data:", inputData)
         prediction, intermediateOutputs = predictWithModel(self.model, np.array([inputData]))
-        print("Prediction:", prediction)
         return prediction, intermediateOutputs
 
     def interpolateColor(self, colorA, colorB, factor:float):
         """Interpolate between two colors with a given factor (0 to 1)."""
+
+        if np.isnan(factor):
+            return pygame.Color('#666666')
+
+        factor = max(0, min(1, factor))
+        
         return pygame.Color(
             int(colorA.r + (colorB.r - colorA.r) * factor),
             int(colorA.g + (colorB.g - colorA.g) * factor),
             int(colorA.b + (colorB.b - colorA.b) * factor)
         )
 
-    def visualizeNeurons(self, screen, model, inputData, intermediate_outputs):
+    def visualizeNeurons(self, screen, model, inputData, intermediateOutputs):
         """
-        Create a visualization of the neural network.
+        Create a visualization of the neural network with neurons displaying their output values,
+        and outgoing connections colored based on the neuron's output value.
         """
         leftMargin = 600
         rightMargin = 150
         topMargin = 10
         bottomMargin = 10
-
-        numLayers = len(model.layers)
-        maxNeurons = max([layer.units for layer in model.layers if hasattr(layer, 'units')])
-
+    
+        # Combine input data with intermediate outputs
+        allOutputs = intermediateOutputs
+    
+        numLayers = len(allOutputs)
+        maxNeurons = max([layerOutput.shape[1] for layerOutput in allOutputs])
+    
         availableWidth = self.screen.get_width() - leftMargin - rightMargin
-        layerSpacing = availableWidth / (numLayers - 3)
-
+        layerSpacing = availableWidth / (numLayers - 1)
+    
         availableHeight = self.screen.get_height() - topMargin - bottomMargin
         neuronSpacing = availableHeight / maxNeurons
-
+    
         neuronRadius = max(5, int(min(layerSpacing, neuronSpacing) / 4))
-
-        layers = [layer.units for layer in model.layers if hasattr(layer, 'units')]
-
+    
+        layers = [layerOutput.shape[1] for layerOutput in allOutputs]
+    
+        # Extract weights from the model
+        weights = [layer.get_weights()[0] for layer in model.layers if isinstance(layer, tf.keras.layers.Dense)]
+    
+        # Normalize weights to a suitable range for line widths
+        maxWeight = max([np.max(np.abs(w)) for w in weights])
+        minWeight = min([np.min(np.abs(w)) for w in weights])
+        weightRange = maxWeight - minWeight
+    
+        def normalizeWeight(weight):
+            return self.MIN_CONNECTION_WIDTH + (self.MAX_CONNECTION_WIDTH - self.MIN_CONNECTION_WIDTH) * (np.abs(weight) - minWeight) / weightRange
+    
         # First pass: Draw all neuron connections
-        for i, layerSize in enumerate(layers):
+        for i in range(len(layers) - 1):
+            currentLayerSize = layers[i]
+            nextLayerSize = layers[i + 1]
             x = leftMargin + i * layerSpacing
-            totalLayerHeight = (layerSize - 1) * neuronSpacing
-            yStart = topMargin + (availableHeight - totalLayerHeight) / 2
-
-            for j in range(layerSize):
-                y = yStart + j * neuronSpacing
-
-                if i < len(layers) - 1:
-                    nextLayerSize = layers[i + 1]
-                    nextTotalLayerHeight = (nextLayerSize - 1) * neuronSpacing
-                    nextYStart = topMargin + (availableHeight - nextTotalLayerHeight) / 2
-                    for k in range(nextLayerSize):
-                        nextX = leftMargin + (i + 1) * layerSpacing
-                        nextY = nextYStart + k * neuronSpacing
-                        nextOutputValue = max(0.0, min(1.0, intermediate_outputs[i + 1][0][k]))
-                        nextColor = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, nextOutputValue)
-                        pygame.draw.line(screen, nextColor, (int(x), int(y)), (int(nextX), int(nextY)), 1)
-
+            nextX = leftMargin + (i + 1) * layerSpacing
+    
+            currentTotalLayerHeight = (currentLayerSize - 1) * neuronSpacing
+            currentYStart = topMargin + (availableHeight - currentTotalLayerHeight) / 2
+    
+            nextTotalLayerHeight = (nextLayerSize - 1) * neuronSpacing
+            nextYStart = topMargin + (availableHeight - nextTotalLayerHeight) / 2
+    
+            for j in range(currentLayerSize):
+                y = currentYStart + j * neuronSpacing
+                outputValue = allOutputs[i][0][j]
+                normalizedOutput = (outputValue + 1) / 2
+                color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
+    
+                for k in range(nextLayerSize):
+                    nextY = nextYStart + k * neuronSpacing
+                    weight = weights[i][j, k]
+                    lineWidth = int(normalizeWeight(weight))
+                    pygame.draw.line(screen, color, (int(x), int(y)), (int(nextX), int(nextY)), lineWidth)
+    
         # Second pass: Draw all neurons and their values
-        for i, layerSize in enumerate(layers):
+        for i in range(len(layers)):
+            layerSize = layers[i]
             x = leftMargin + i * layerSpacing
             totalLayerHeight = (layerSize - 1) * neuronSpacing
             yStart = topMargin + (availableHeight - totalLayerHeight) / 2
-
+    
             for j in range(layerSize):
                 y = yStart + j * neuronSpacing
-                outputValue = max(0.0, min(1.0, intermediate_outputs[i][0][j]))
-                color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, outputValue)
+                outputValue = allOutputs[i][0][j]
+                normalizedOutput = (outputValue + 1) / 2
+                color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
                 pygame.draw.circle(screen, color, (int(x), int(y)), neuronRadius)
-
-                # Render neuron value
-                value_text = f"{outputValue:.2f}"
-                text_surface = self.font.render(value_text, True, self.TEXT_COLOR)
-                text_rect = text_surface.get_rect(center=(int(x), int(y)))
-                screen.blit(text_surface, text_rect)
-
-    def main_loop(self):
+    
+                # Render neuron output value
+                valueText = f"{outputValue:.2f}"
+                textSurface = self.font.render(valueText, True, self.TEXT_COLOR)
+                textRect = textSurface.get_rect(center=(int(x), int(y)))
+                screen.blit(textSurface, textRect)
+ 
+    def mainLoop(self, visualisation=False):
         while self.running:
             # Fill background
             self.screen.fill(self.BACKGROUND_COLOR)
             self.cursorTimer += 1
 
-            # Toggle cursor visibility
-            if self.cursorTimer % (self.fps // 2) == 0:
+            # Toggle cursor visibility (if the window is focused)
+            windowFocused = pygame.key.get_focused()
+            if self.cursorTimer % (self.fps // 2) == 0 and windowFocused:
                 self.cursorVisible = not self.cursorVisible
+            elif not windowFocused:
+                self.cursorVisible = False
 
             # Handle events
             for event in pygame.event.get():
                 if event.type == pygame.QUIT:
                     self.running = False
+                
                 elif event.type == pygame.VIDEORESIZE:
                     # Handle window resize
-                    new_width = max(event.w, self.MIN_WIDTH)
-                    new_height = max(event.h, self.MIN_HEIGHT)
+                    newWidth = max(event.w, self.MIN_WIDTH)
+                    newHeight = max(event.h, self.MIN_HEIGHT)
                     self.screen = pygame.display.set_mode(
-                        (new_width, new_height), pygame.RESIZABLE
+                        (newWidth, newHeight), pygame.RESIZABLE
                     )
                     # Update input text spacing based on new window height
-                    self.INPUT_TEXT_HORIZONTAL_SPACING = new_height * 0.02  # 2% of window height
-                    self.INPUT_TEXT_VERTICAL_SPACING = new_height * 0.005    # 0.5% of window height
+                    self.INPUT_TEXT_HORIZONTAL_SPACING = newHeight * 0.02  # 2% of window height
+                    self.INPUT_TEXT_VERTICAL_SPACING = newHeight * 0.005    # 0.5% of window height
 
                     # Update input box vertical positions based on new window height
                     if self.modelFilePath:
                         verticalSpacing = (self.screen.get_height() - 2 * self.TOP_BOTTOM_MARGIN) / len(self.mapping)
                         for i, (feature, inputBox, values) in enumerate(self.inputBoxes):
-                            new_y = self.TOP_BOTTOM_MARGIN + int(verticalSpacing * i)
-                            self.inputBoxes[i] = (feature, pygame.Rect(10, new_y, self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT), values)
+                            newY = self.TOP_BOTTOM_MARGIN + int(verticalSpacing * i)
+                            self.inputBoxes[i] = (feature, pygame.Rect(10, newY, self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT), values)
+                
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     # Handle mouse clicks
                     if self.modelFilePath is None:
@@ -279,6 +329,7 @@ class NeuralNetApp:
                                 self.activeBox = inputBox
                                 self.activeFeature = feature
                                 self.cursorTimer = 0
+                
                 elif event.type == pygame.KEYDOWN:
                     # Handle keyboard input for active input box
                     if self.activeBox:
@@ -293,7 +344,7 @@ class NeuralNetApp:
                 # Draw input fields
                 for feature, inputBox, values in self.inputBoxes:
                     # Determine background color based on active state
-                    box_background_color = self.ACTIVE_COLOR if inputBox == self.activeBox else self.INPUT_BACKGROUND_COLOR
+                    boxBackgroundColor = self.ACTIVE_COLOR if inputBox == self.activeBox and windowFocused else self.INPUT_BACKGROUND_COLOR
 
                     # Calculate help text
                     wrappedText = self.wrapText(f"{feature}: {values}", self.font, self.MAX_HELP_TEXT_WIDTH)
@@ -318,7 +369,7 @@ class NeuralNetApp:
                     pygame.draw.rect(self.screen, self.TEXT_COLOR, boundingRect, 1)  # Single contour with width 1
 
                     # Draw input box with dynamic background color
-                    pygame.draw.rect(self.screen, box_background_color, inputBox, 0)  # Filled input box with dynamic background
+                    pygame.draw.rect(self.screen, boxBackgroundColor, inputBox, 0)  # Filled input box with dynamic background
 
                     # Render input text
                     textSurface = self.font.render(str(self.inputValues[feature]), True, self.TEXT_COLOR)
@@ -338,14 +389,19 @@ class NeuralNetApp:
                         )
                         self.screen.blit(labelSurface, labelPos)
 
-                # Automatically get prediction
-                inputData = [float(value) if self.is_float(value) else np.nan for value in self.inputValues.values()]
-                with self.prediction_lock:
-                    if not self.prediction_ready:
-                        self.prediction_thread = threading.Thread(target=self.getPredictionThread)
-                        self.prediction_thread.start()
 
-                with self.prediction_lock:
+                # Automatically get prediction
+                
+                # After getting inputData as a list
+                inputData = [float(value) if self.isFloat(value) else np.nan for value in self.inputValues.values()]
+                # Convert inputData to a NumPy array with shape (1, num_features)
+                inputData = np.array([inputData])
+                with self.predictionLock:
+                    if not self.predictionReady:
+                        self.predictionThread = threading.Thread(target=self.getPredictionThread)
+                        self.predictionThread.start()
+
+                with self.predictionLock:
                     if self.prediction is not None:
                         prediction = self.prediction
                         intermediateOutputs = self.intermediateOutputs
@@ -355,22 +411,29 @@ class NeuralNetApp:
                             predictionText = "N/A"
                             predictionSurface = self.font.render(f"Prediction: {predictionText} ({predictionText})", True, self.TEXT_COLOR)
                         else:
-                            predictionText = "YES" if prediction[0][0] > 0 else "NO"
-                            predictionSurface = self.font.render(f"Prediction: {predictionText} ({prediction[0][0]:.2f})", True, self.TEXT_COLOR)
-                            self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
+                            predictionText = "YES" if prediction[0][0] > 0.5 else "NO"
+                            sqrtPrediction = np.sqrt(prediction[0][0])
+                            predictionConfidence = abs((sqrtPrediction - 0.5) *200)
+                            predictionSurface = self.font.render(f"Prediction: {predictionText} ({predictionConfidence:.2f}%)", True, self.TEXT_COLOR)
+                            if visualisation:
+                                self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
 
                         predictionY = (self.screen.get_height() - predictionSurface.get_height()) / 2
                         self.screen.blit(predictionSurface, (self.screen.get_width() - predictionSurface.get_width() - 10, predictionY))
-                    elif self.last_prediction is not None:
-                        prediction = self.last_prediction
-                        intermediateOutputs = self.last_intermediateOutputs
+                    
+                    elif self.lastPrediction is not None:
+                        prediction = self.lastPrediction
+                        intermediateOutputs = self.lastIntermediateOutputs
                         if prediction is None:
                             predictionText = "N/A"
                             predictionSurface = self.font.render(f"Prediction: {predictionText} ({predictionText})", True, self.TEXT_COLOR)
                         else:
-                            predictionText = "YES" if prediction[0][0] > 0 else "NO"
-                            predictionSurface = self.font.render(f"Prediction: {predictionText} ({prediction[0][0]:.2f})", True, self.TEXT_COLOR)
-                            self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
+                            predictionText = "YES" if prediction[0][0] > 0.5 else "NO"
+                            sqrtPrediction = np.sqrt(prediction[0][0])
+                            predictionConfidence = abs((sqrtPrediction - 0.5) *200)
+                            predictionSurface = self.font.render(f"Prediction: {predictionText} ({predictionConfidence:.2f}%)", True, self.TEXT_COLOR)
+                            if visualisation:
+                                self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
 
                         predictionY = (self.screen.get_height() - predictionSurface.get_height()) / 2
                         self.screen.blit(predictionSurface, (self.screen.get_width() - predictionSurface.get_width() - 10, predictionY))
@@ -387,7 +450,7 @@ class NeuralNetApp:
             pygame.display.flip()
             self.clock.tick(self.fps)
 
-    def is_float(self, value):
+    def isFloat(self, value):
         """Check if the string can be converted to a float."""
         try:
             float(value)
@@ -396,8 +459,8 @@ class NeuralNetApp:
             return False
 
 def main():
-    app = NeuralNetApp()
-    app.main_loop()
+    neuralNetVis = NeuralNetApp()
+    neuralNetVis.mainLoop()
 
 if __name__ == "__main__":
     main()
