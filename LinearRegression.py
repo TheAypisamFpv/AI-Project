@@ -62,9 +62,7 @@ print(coefficients.sort_values(by='Coefficient', ascending=False))
 
 coefficients.to_csv("regression_coefficients.csv", index=False)
 
-# Visualisation des prédictions vs. valeurs réelles
 plt.figure(figsize=(10, 6))
-
 # Calculer les erreurs absolues
 errors = test_labels - y_pred
 
@@ -75,7 +73,6 @@ norm_errors = np.square((errors - errors.min()) / (errors.max() - errors.min()))
 cmap = LinearSegmentedColormap.from_list('error_cmap', ['#5BAFFC', '#FD4F59'])
 colors = cmap(norm_errors)
 
-# Utiliser des boîtes pour visualiser les prédictions
 plt.scatter(test_labels, y_pred, c=colors, alpha=0.5, label='Prédictions', marker='s')
 
 plt.xlabel("Valeurs réelles")
