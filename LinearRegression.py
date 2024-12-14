@@ -69,18 +69,38 @@ target = target[:min_length]
 y_pred = y_pred[:min_length]
 errors = target - y_pred
 
-# Calculate precision
-precision = np.square(1 - np.abs(errors))
+# Draw dashed lines at target min and max
+plt.axhline(y=target.min(), color='lightgray', linestyle='--', linewidth=1, zorder=-1)
+plt.axhline(y=target.max(), color='lightgray', linestyle='--', linewidth=1, zorder=-1)
+plt.axvline(x=target.min(), color='lightgray', linestyle='--', linewidth=1, zorder=-1)
+plt.axvline(x=target.max(), color='lightgray', linestyle='--', linewidth=1, zorder=-1)
 
-cmap = LinearSegmentedColormap.from_list('precision_cmap', ['#FD4F59', '#5BAFFC'])
+# Ajuster les erreurs pour qu'elles soient dans la plage des valeurs cibles
+adjusted_errors = np.where(y_pred < target.min(), 1, errors)
+adjusted_errors = np.where(y_pred > target.max(), 1, adjusted_errors)
+
+# normaliser les erreurs a [0, 1]
+norm_errors = np.abs(adjusted_errors)
+
+print("\n=== Erreurs ===")
+for error, index in zip(errors, range(100)):
+    print(f"expected: {target[index]} | predicted: {y_pred[index]:.2f} | error: {error:.2f} | normalized error: {norm_errors[index]:.2f}")
+
+print("max error:", errors.max())
+print("min error:", errors.min())
+
+# [0, 1] -> [0, 1] (avec f(x) = x^0.5)
+precision = np.power(norm_errors, 0.5)
+
+cmap = LinearSegmentedColormap.from_list('precision_cmap', ['#5BAFFC', '#FD4F59'])
 colors = cmap(precision)
 
-plt.scatter(target, y_pred, c=colors, alpha=0.5, label='Predictions', marker='s')
+plt.scatter(target, y_pred, alpha=0.75, c=colors, label='Predictions', marker='s')
 plt.xlabel("Actual Values")
 plt.ylabel("Predictions")
 plt.title("Predictions vs. Actual Values")
 plt.legend()
 plt.axis('equal')
 plt.xlim([target.min(), target.max()])
-plt.ylim([target.min(), target.max()])
+plt.ylim([min(y_pred.min(), target.min())-0.1, max(y_pred.max(), target.max())+0.1])
 plt.show()
