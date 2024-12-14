@@ -63,22 +63,24 @@ coefficients.to_csv("regression_coefficients.csv", index=False)
 
 plt.figure(figsize=(10, 6))
 # Calculer les erreurs absolues
-errors = test_labels - y_pred
+# tableau de la taille de la plus petite liste
+min_length = min(len(target), len(y_pred))
+target = target[:min_length]
+y_pred = y_pred[:min_length]
+errors = target - y_pred
 
-# Normaliser les erreurs pour qu'elles soient comprises entre 0 et 1
-norm_errors = np.square((errors - errors.min()) / (errors.max() - errors.min()))
+# Calculate precision
+precision = np.square(1 - np.abs(errors))
 
-# Définir une fonction de mappage pour interpoler les couleurs
-cmap = LinearSegmentedColormap.from_list('error_cmap', ['#5BAFFC', '#FD4F59'])
-colors = cmap(norm_errors)
+cmap = LinearSegmentedColormap.from_list('precision_cmap', ['#FD4F59', '#5BAFFC'])
+colors = cmap(precision)
 
-plt.scatter(test_labels, y_pred, c=colors, alpha=0.5, label='Prédictions', marker='s')
-
-plt.xlabel("Valeurs réelles")
-plt.ylabel("Prédictions")
-plt.title("Prédictions vs. Valeurs réelles")
+plt.scatter(target, y_pred, c=colors, alpha=0.5, label='Predictions', marker='s')
+plt.xlabel("Actual Values")
+plt.ylabel("Predictions")
+plt.title("Predictions vs. Actual Values")
 plt.legend()
 plt.axis('equal')
-plt.xlim([test_labels.min(), test_labels.max()])
-plt.ylim([test_labels.min(), test_labels.max()])
+plt.xlim([target.min(), target.max()])
+plt.ylim([target.min(), target.max()])
 plt.show()
