@@ -21,20 +21,44 @@ from tensorflow.keras.layers import Dense, Dropout  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
 from tensorflow.keras.regularizers import l2  # type: ignore
 
-
 from joblib import Parallel, delayed
 import multiprocessing
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
-import os
 
 # Set TensorFlow threading parameters
-tf.config.threading.set_intra_op_parallelism_threads(1)
-tf.config.threading.set_inter_op_parallelism_threads(1)
+tf.config.threading.set_intra_op_parallelism_threads(11)
+tf.config.threading.set_inter_op_parallelism_threads(11)
+
+# Set environment variables to limit the number of threads used by OpenMP and other libraries
+os.environ['OMP_NUM_THREADS'] = '11'
+os.environ['OPENBLAS_NUM_THREADS'] = '11'
+os.environ['MKL_NUM_THREADS'] = '11'
+os.environ['VECLIB_MAXIMUM_THREADS'] = '11'
+os.environ['NUMEXPR_NUM_THREADS'] = '11'
 
 
-def loadAndPreprocessData(filePath: str):
+def saveCustomMapping(defaultMappingFilePath:str, updatedMappingFilePath:str, specifiedColumnsToDrop:list = []):
+    """
+    Load default mapping file and save the updated mapping file
+    """
+    # Load the default mapping file
+    defaultMapping = pd.read_csv(defaultMappingFilePath)
+
+    # Drop specified columns
+    for column in specifiedColumnsToDrop:
+        if column in defaultMapping.columns:
+            defaultMapping = defaultMapping.drop(column, axis=1)
+
+    # Save the updated mapping file
+    if not updatedMappingFilePath.endswith('.csv'):
+        updatedMappingFilePath += '.csv'
+    
+    defaultMapping.to_csv(updatedMappingFilePath, index=False)
+    print(f"\nUpdated mapping file saved as '{updatedMappingFilePath}'\n")
+
+def loadAndPreprocessData(filePath:str, specifiedColumnsToDrop:list = []):
     """Load and preprocess the dataset from a CSV file.
 
     This function reads data from the specified CSV file, performs preprocessing steps such as
@@ -62,6 +86,16 @@ def loadAndPreprocessData(filePath: str):
 
     # Drop EmployeeID as it is not a feature
     data = data.drop('EmployeeID', axis=1)
+
+    # Drop specified columns
+    for column in specifiedColumnsToDrop:
+        print("Dropping columns :")
+        if column in data.columns:
+            data = data.drop(column, axis=1)
+            print(f"\t-{column}")
+
+    print()
+
 
     # Handle missing values by dropping rows with any NaN values
     data = data.dropna()
@@ -280,7 +314,7 @@ def detectOverfitting(history, lossFunction):
     print("----------------------------------")
 
 
-def saveModel(model: tf.keras.Model, filePath: str):
+def saveModel(model: tf.keras.Model, filePath:str):
     """Save the trained neural network model to the specified file path.
 
     The model is saved in Keras format. If the provided file path does not end with '.keras',
@@ -457,7 +491,7 @@ def evaluateModel(model, TestFeatures, actualLabels, threshold=0.3):
     print(confusion_matrix(actualLabels, predictedLabel))
 
 
-def loadModel(modelPath: str):
+def loadModel(modelPath:str):
     """Load a trained neural network model from the specified file path.
 
     Args:
@@ -525,7 +559,7 @@ def predictWithModel2(model, features):
     return predictions
 
 
-def runGridSearch(features, target, paramGrid:dict):
+def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
     """Perform a grid search to find the best combination of hyperparameters.
 
     This function tests various combinations of neural network architectures and training parameters
@@ -542,14 +576,15 @@ def runGridSearch(features, target, paramGrid:dict):
         - The best accuracy achieved.
         - The corresponding best hyperparameters.
     """
-
+    startTime = pd.Timestamp.now()
+    
     grid = ParameterGrid(paramGrid)
     totalGrid = len(grid)
     
     cpuCount = multiprocessing.cpu_count()
-    nJobs = max(1, floor(cpuCount * 0.7))
+    nJobs = max(1, floor(cpuCount * CPULimitation))
 
-    print(f"\n\nRunning grid search with {nJobs} CPU cores for {totalGrid} parameters combinations...")
+    print(f"\n\nRunning grid search with {nJobs} CPU cores (power equivalent) for {totalGrid} parameters combinations...")
 
     manager = multiprocessing.Manager()
     bestAccuracy = manager.Value('d', 0.0)
@@ -596,6 +631,10 @@ def runGridSearch(features, target, paramGrid:dict):
         delayed(evaluate)(params, idx, bestAccuracy, bestParams) for idx, params in enumerate(grid, 1)
     )
 
+    endTime = pd.Timestamp.now()
+
+    print(f"\n\nGrid search completed in {endTime - startTime}")
+
     print(f"\nBest Accuracy: {bestAccuracy.value * 100:.2f}%")
     print("Best Parameters:")
     paramstr = "\n".join([f"\t{k}: {v}" for k, v in bestParams.items()])
@@ -635,16 +674,18 @@ def runModelTraining():
     else:
         print("Using CPU")
 
+    tableToDrop = ['AverageHoursWorked']
+
     # Load and preprocess the dataset
-    filePath = r'GeneratedDataSet\ModelDataSet.csv'
-    features, target = loadAndPreprocessData(filePath)
+    datasetFilePat = r'GeneratedDataSet\ModelDataSet.csv'
+    features, target = loadAndPreprocessData(datasetFilePat, tableToDrop)
 
     # Define hyperparameter grid for grid search
     paramGrid = {
         'layers': [
-            [features.shape[1], 128, 64, 32, 1],
             [features.shape[1], 256, 128, 64, 1],
-            [features.shape[1], 512, 256, 128, 1]
+            [features.shape[1], 256, 256, 128, 1],
+            [features.shape[1], 256, 256, 256, 1],
         ],
         'epochs': [50, 100],
         'batchSize': [20, 32],
@@ -657,14 +698,19 @@ def runModelTraining():
         'loss': ['binary_crossentropy', 'mean_squared_error']
     }
 
+    CPULimitation = 1.0
+
     # Start hyperparameter grid search
     print("\nStarting Grid Search for Hyperparameter Optimization...")
-    bestParams = runGridSearch(features, target, paramGrid)
+    bestParams = runGridSearch(features, target, paramGrid, CPULimitation)
 
     # Create the model directory after finding the best parameters
     modelDirectory = f'Models/TrainedModel_{bestParams["layers"]}_{bestParams["epochs"]}_{bestParams["batchSize"]}_{bestParams["dropoutRate"]}_{bestParams["l2_reg"]}_{bestParams["inputActivation"]}_{bestParams["hiddenActivation"]}_{bestParams["outputActivation"]}_Accuracy_{bestParams["loss"]}_Adam({bestParams["learningRate"]})_0.2/'
     os.makedirs(os.path.dirname(modelDirectory), exist_ok=True)
 
+    defaultMappingFilePath = r'GeneratedDataSet\MappingValues.csv'
+    updatedMappingFilePath = modelDirectory + 'MappingValues.csv'
+    saveCustomMapping(defaultMappingFilePath, updatedMappingFilePath, tableToDrop)
 
     # Record the start time of training
     startTrainingTime = pd.Timestamp.now()
