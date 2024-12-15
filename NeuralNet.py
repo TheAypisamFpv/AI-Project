@@ -38,6 +38,10 @@ os.environ['MKL_NUM_THREADS'] = '11'
 os.environ['VECLIB_MAXIMUM_THREADS'] = '11'
 os.environ['NUMEXPR_NUM_THREADS'] = '11'
 
+# Set a random seed for reproducibility
+RANDOM_SEED = 42
+np.random.seed(RANDOM_SEED)
+tf.random.set_seed(RANDOM_SEED)
 
 def saveCustomMapping(defaultMappingFilePath:str, updatedMappingFilePath:str, specifiedColumnsToDrop:list = []):
     """
@@ -221,7 +225,7 @@ def trainNeuralNet(
         features,
         target,
         test_size=trainingTestingSplit,
-        random_state=42,
+        random_state=RANDOM_SEED,
         stratify=target
     )
 
@@ -576,7 +580,7 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
         - The best accuracy achieved.
         - The corresponding best hyperparameters.
     """
-    startTime = pd.Timestamp.now()
+    searchStartTime = pd.Timestamp.now()
     
     grid = ParameterGrid(paramGrid)
     totalGrid = len(grid)
@@ -590,10 +594,12 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
     bestAccuracy = manager.Value('d', 0.0)
     bestParams = manager.dict()
     progressWheelIndex = manager.Value('i', 0)
+    totalElapsedTime = manager.Value('d', 0.0)
 
     print(getProgressBar(0, progressWheelIndex.value) + "Best Accuracy:  0.00%", end='\r')
 
     def evaluate(params, idx, bestAccuracy, bestParams):
+        trainStartTime = pd.Timestamp.now()
         optimizer = tf.keras.optimizers.Adam(learning_rate=params['learningRate'])
         
         model, history = trainNeuralNet(
@@ -605,25 +611,39 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
             inputActivation=params['inputActivation'],
             hiddenActivation=params['hiddenActivation'],
             outputActivation=params['outputActivation'],
-            metrics=['Accuracy'],
+            metrics=params['metrics'],
             loss='binary_crossentropy',
             optimizer=optimizer,
             dropoutRate=params['dropoutRate'],
             trainingTestingSplit=0.2,
             l2_reg=params['l2_reg'],
             verbose=0
-        )
-        
+        )        
         valAccuracy = history.history.get('val_Accuracy', [0])[-1]
         if valAccuracy > bestAccuracy.value:
             bestAccuracy.value = valAccuracy
             bestParams.update(params)
 
         # Update index for progress wheel
-        progressWheelIndex.value = progressWheelIndex.value + 1
+        progressWheelIndex.value += 1
 
-        completion = idx / totalGrid
-        print(getProgressBar(completion, progressWheelIndex.value) + f"Best Accuracy: {bestAccuracy.value * 100:.2f}%", end='\r')
+        trainEndTime = pd.Timestamp.now()
+        elapsedTrainTime = trainEndTime - trainStartTime
+        totalElapsedTime.value += elapsedTrainTime.total_seconds()
+
+        averageTime = (totalElapsedTime.value / progressWheelIndex.value) / nJobs
+
+        estTime = averageTime * (totalGrid - progressWheelIndex.value)
+        estHours = int(estTime / 3600)
+        estMinutes = int((estTime % 3600) / 60)
+        estSeconds = int(estTime % 60)
+
+        estFinishTime = searchStartTime + pd.Timedelta(seconds=estTime)
+
+        completion = progressWheelIndex.value / totalGrid
+        estTimeStr = f"{estHours:02}h {estMinutes:02}min {estSeconds:02}s"
+        estFinishTimeStr = f"{estFinishTime.hour:02}h {estFinishTime.minute:02}min {estFinishTime.second:02}s"
+        print(getProgressBar(completion, progressWheelIndex.value) + f"Best Accuracy: {bestAccuracy.value * 100:.2f}%  |  Time remaining: {estTimeStr}  |  est. Finish Time: {estFinishTimeStr}", end='\r')
         
         return valAccuracy, params
 
@@ -631,9 +651,11 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
         delayed(evaluate)(params, idx, bestAccuracy, bestParams) for idx, params in enumerate(grid, 1)
     )
 
-    endTime = pd.Timestamp.now()
+    print(getProgressBar(1, progressWheelIndex.value) + f"Best Accuracy: {bestAccuracy.value * 100:.2f}%", end='\r')
+    searchEndTime = pd.Timestamp.now()
 
-    print(f"\n\nGrid search completed in {endTime - startTime}")
+    elapsedTime = searchEndTime - searchStartTime
+    print(f"\n\nGrid search completed in {int(elapsedTime.components.hours):02}h {int(elapsedTime.components.minutes):02}min {int(elapsedTime.components.seconds):02}s (average training time: {totalElapsedTime.value / totalGrid:.2f}s)")
 
     print(f"\nBest Accuracy: {bestAccuracy.value * 100:.2f}%")
     print("Best Parameters:")
@@ -662,17 +684,23 @@ def runModelTraining():
         FileNotFoundError: If the dataset file does not exist.
         Exception: If any step in the training pipeline fails.
     """
+    print("TensorFlow version:", tf.__version__)
+    print("NumPy version:", np.__version__)
+    print("Random seed set to:", RANDOM_SEED)
+    print()
+    
     # Check if TensorFlow is using GPU
-    print("")
     physicalDevices = tf.config.list_physical_devices('GPU')
     if physicalDevices:
         try:
             tf.config.experimental.set_memory_growth(physicalDevices[0], True)
-            print(f"Using GPU: {physicalDevices}")
+            print(f"Training using GPU: {physicalDevices}")
         except RuntimeError as e:
             print(e)
     else:
-        print("Using CPU")
+        print(f"Training using CPU with {multiprocessing.cpu_count()} cores")
+
+    print()
 
     tableToDrop = ['AverageHoursWorked']
 
@@ -683,15 +711,19 @@ def runModelTraining():
     # Define hyperparameter grid for grid search
     paramGrid = {
         'layers': [
-            [features.shape[1], 256, 128, 64, 1],
-            [features.shape[1], 256, 256, 128, 1],
-            [features.shape[1], 256, 256, 256, 1],
+            [features.shape[1], 256, 128, 64, 1]
         ],
         'epochs': [50, 100],
         'batchSize': [20, 32],
         'dropoutRate': [0.3, 0.5],
         'l2_reg': [0.001, 0.01],
         'learningRate': [0.0005, 0.001],
+        "metrics": [
+            ['Accuracy'],
+            ['Accuracy', 'Recall'],
+            ['Accuracy', 'Precision'],
+            ['Accuracy', 'Recall', 'Precision']
+            ],
         'inputActivation': ['relu', 'tanh'],
         'hiddenActivation': ['relu', 'tanh'],
         'outputActivation': ['sigmoid'],
