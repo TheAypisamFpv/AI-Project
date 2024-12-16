@@ -41,7 +41,7 @@ os.environ['VECLIB_MAXIMUM_THREADS'] = '11'
 os.environ['NUMEXPR_NUM_THREADS'] = '11'
 
 # Set a random seed for reproducibility
-RANDOM_SEED = 42
+RANDOM_SEED = np.random.randint(0, 1000) # random seed per run of the program, but the same for all randoms functions for reproducibility after training
 np.random.seed(RANDOM_SEED)
 tf.random.set_seed(RANDOM_SEED)
 
@@ -270,9 +270,9 @@ def trainNeuralNet(
     )
 
     # Evaluate the model on the test set
-    results = model.evaluate(TestFeatures, testLabels, verbose=verbose)
-    results_dict = dict(zip(model.metrics_names, results))
-    Accuracy = results_dict.get('Accuracy', None)
+    modelEvaluation = model.evaluate(TestFeatures, testLabels, verbose=verbose)
+    results = dict(zip(model.metrics_names, modelEvaluation))
+    Accuracy = results.get('val_Accuracy', None)
     if verbose: 
         if Accuracy is not None:
             print(f'Accuracy: {Accuracy * 100:.2f}%')
@@ -630,7 +630,7 @@ def predictWithModel2(model, features):
     return predictions
 
 
-def runGridSearch(features, target, paramGrid: dict, CPULimitation: float = 0.7):
+def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
     """Perform a grid search to find the best combination of hyperparameters.
 
     This function tests various combinations of neural network architectures and training parameters
@@ -655,7 +655,7 @@ def runGridSearch(features, target, paramGrid: dict, CPULimitation: float = 0.7)
     cpuCount = multiprocessing.cpu_count()
     nJobs = max(1, floor(cpuCount * CPULimitation))
 
-    print(f"\n\nRunning grid search with {nJobs} CPU cores (power equivalent) for {totalGrid} parameters combinations...")
+    print(f"\n\nRunning grid search on {nJobs} CPU cores (power equivalent) for {totalGrid} parameters combinations...")
 
     manager = multiprocessing.Manager()
     bestAccuracy = manager.Value('d', 0.0)
@@ -743,7 +743,18 @@ def runGridSearch(features, target, paramGrid: dict, CPULimitation: float = 0.7)
     paramstr = "\n".join([f"\t{k}: {v}" for k, v in bestParams.items()])
     print(paramstr)
 
-    modelDirectory = f'Models/TrainedModel_{bestParams["layers"]}_{bestParams["epochs"]}_{bestParams["batchSize"]}_{bestParams["dropoutRate"]}_{bestParams["l2_reg"]}_{bestParams["inputActivation"]}_{bestParams["hiddenActivation"]}_{bestParams["outputActivation"]}_{bestParams["metrics"]}_{bestParams["loss"]}_{bestParams["optimizer"]}({bestParams["learningRate"]})_0.2/'
+    # generate the model ID (check in the Models folder for the latest model, and increment the id)
+    lastId = 0
+    for file in os.listdir('Models'):
+        if file.startswith('TrainedModel_'):
+            try:
+                lastId = max(lastId, int(file.split('_')[-1]))
+            except:
+                pass
+    
+    modelId = lastId + 1
+    modelHash = hash(str(bestParams))
+    modelDirectory = f'Models/TrainedModel_{modelHash}_{modelId}/'
     backgroundColor = '#222222'
 
     if not os.path.exists(modelDirectory):
@@ -837,11 +848,11 @@ def runModelTraining():
         'optimizer': ['adam']
     }
 
-    CPULimitation = 1.0
+    powerLimitation = 0.5
 
     # Start hyperparameter grid search
     print("\nStarting Grid Search for Hyperparameter Optimization...")
-    bestParams, modelDirectory = runGridSearch(features, target, hyperparameterGrid, CPULimitation)
+    bestParams, modelDirectory = runGridSearch(features, target, hyperparameterGrid, powerLimitation)
 
     # Create the model directory after finding the best parameters
     os.makedirs(os.path.dirname(modelDirectory), exist_ok=True)
