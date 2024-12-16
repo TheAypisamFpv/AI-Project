@@ -112,7 +112,7 @@ class NeuralNetApp:
         if not directory:
             directory = "."
 
-        mappingFilePath = f"{directory}/MappingValues.csv"
+        mappingFilePath = directory + r"/MappingValues.csv"
 
         if not os.path.exists(mappingFilePath):
             # use default values
@@ -122,7 +122,7 @@ class NeuralNetApp:
             print(errorMessage)
             print("-" * len(errorMessage))
             print()
-            mappingFilePath = "GeneratedDataSet\MappingValues.csv"
+            mappingFilePath = r"GeneratedDataSet\MappingValues.csv"
         else:
             print(f"\nLoaded mapping values from {mappingFilePath}\n")
 
@@ -234,9 +234,9 @@ class NeuralNetApp:
 
         # Ensure inputData matches the expected input shape
         inputData = np.array([inputData])
-        expected_input_shape = self.model.input_shape[1]
-        if inputData.shape[1] != expected_input_shape:
-            raise ValueError(f"Expected input shape ({expected_input_shape}) does not match provided input shape ({inputData.shape[1]})")
+        expectedInputShape = self.model.input_shape[1]
+        if inputData.shape[1] != expectedInputShape:
+            raise ValueError(f"Expected input shape ({expectedInputShape}) does not match provided input shape ({inputData.shape[1]})")
 
         prediction, intermediateOutputs = predictWithModel(self.model, inputData)
         return prediction, intermediateOutputs
@@ -304,7 +304,7 @@ class NeuralNetApp:
         modelDirectory = os.path.dirname(self.modelFilePath)
         importanceFilePath = os.path.join(modelDirectory, "FeatureImportance.csv")
         if os.path.exists(importanceFilePath):
-            featuresImportance = pd.read_csv(importanceFilePath, index_col=0, squeeze=True).to_dict()
+            featuresImportance = pd.read_csv(importanceFilePath, index_col=0)["Importance"].to_dict()
             print(f"Loaded feature importance from {importanceFilePath}")
         else:
             featuresImportance = {feature: 1 for feature in self.mapping.keys()}
@@ -312,13 +312,14 @@ class NeuralNetApp:
 
         maxImportance = max(featuresImportance.values())
         minImportance = min(featuresImportance.values())
-        importanceRange = maxImportance - minImportance
+        importanceRange = maxImportance - minImportance 
 
         def normalizeImportance(importance):
+            defaultNeuronSize = 7
             if importanceRange == 0:
                 return neuronRadius
             
-            return neuronRadius + (importance - minImportance) / importanceRange * neuronRadius
+            return defaultNeuronSize + (importance - minImportance) / importanceRange * defaultNeuronSize
 
         # First pass: Draw all neuron connections
         for i in range(len(layers) - 1):

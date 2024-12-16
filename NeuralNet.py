@@ -602,13 +602,14 @@ def predictWithModel(model, inputData):
     outputs = [layer.output for layer in model.layers if isinstance(layer, tf.keras.layers.Dense)]
     if not outputs:
         raise ValueError("The model does not contain any Dense layers.")
-    intermediate_model = tf.keras.Model(inputs=model.inputs, outputs=outputs)
+    
+    intermediateModel = tf.keras.Model(inputs=model.inputs, outputs=outputs)
     # Get the outputs
-    layer_outs = intermediate_model.predict(inputData)
+    layerOuts = intermediateModel.predict(inputData)
     # Prepend the input data to layer_outs
-    layer_outs = [inputData] + list(layer_outs)
-    prediction = layer_outs[-1]
-    return prediction, layer_outs
+    layerOuts = [inputData] + list(layerOuts)
+    prediction = layerOuts[-1]
+    return prediction, layerOuts
 
 
 def predictWithModel2(model, features):

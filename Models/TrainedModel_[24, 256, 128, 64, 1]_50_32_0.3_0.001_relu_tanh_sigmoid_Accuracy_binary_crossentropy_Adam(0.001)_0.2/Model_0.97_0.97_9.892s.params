@@ -1,1 +1,0 @@
-{"batchSize": 32, "dropoutRate": 0.3, "epochs": 50, "hiddenActivation": "tanh", "inputActivation": "relu", "l2_reg": 0.001, "layers": [24, 256, 128, 64, 1], "learningRate": 0.001, "loss": "binary_crossentropy", "outputActivation": "sigmoid"}
