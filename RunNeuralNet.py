@@ -362,13 +362,15 @@ class NeuralNetApp:
                     weight = np.mean([currentWeights[j, k] for j in currentCluster for k in nextCluster])
                     lineWidth = int(normalizeWeight(weight))
                     
+                    weightAdjustedColor = pygame.Color(color[0], color[1], color[2], int(255 * np.abs(weight / maxWeight))) 
+                    
                     # Draw multiple aaline segments to simulate a thicker line
                     lineSpaceing = 3
                     for offset in range(-lineWidth // lineSpaceing, lineWidth // lineSpaceing + 1):
                         if offset == -lineWidth // 3 or offset == lineWidth // 3:
-                            pygame.draw.aaline(screen, color, (int(x), int(y + offset)), (int(nextX), int(nextY + offset)), blend=1)
+                            pygame.draw.aaline(screen, weightAdjustedColor, (int(x), int(y + offset)), (int(nextX), int(nextY + offset)), blend=1)
                         else:
-                            pygame.draw.line(screen, color, (int(x), int(y + offset)), (int(nextX), int(nextY + offset)))
+                            pygame.draw.line(screen, weightAdjustedColor, (int(x), int(y + offset)), (int(nextX), int(nextY + offset)))
 
 
         # Second pass: Draw all neurons and their values
@@ -384,6 +386,7 @@ class NeuralNetApp:
 
             for cluster in clusters:
                 clusterOutput = np.mean([allOutputs[i][0][j] for j in cluster])
+                # normalized to 
                 normalizedOutput = (clusterOutput + 1) / 2
                 color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
                 y = yStart + np.mean([j * neuronSpacing for j in cluster])
@@ -396,7 +399,9 @@ class NeuralNetApp:
                 else:
                     adjustedRadius = neuronRadius
 
-                pygame.draw.circle(screen, color, (int(x), int(y)), adjustedRadius)
+                weightAdjustedColor = pygame.Color(color[0], color[1], color[2], int(255 * np.abs(clusterOutput)))
+
+                pygame.draw.circle(screen, weightAdjustedColor, (int(x), int(y)), adjustedRadius)
 
                 # Render neuron output value
                 valueText = f"{clusterOutput:.2f}"
