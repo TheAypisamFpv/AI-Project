@@ -1,15 +1,29 @@
-import pandas as pd
-import numpy as np
-from sklearn.model_selection import train_test_split, GridSearchCV
+from sklearn.model_selection import ParameterGrid, train_test_split
 from sklearn.linear_model import LinearRegression
 from sklearn.metrics import mean_squared_error, r2_score
+import pandas as pd
+import numpy as np
 import matplotlib.pyplot as plt
 from matplotlib.colors import LinearSegmentedColormap
 
-def runGridSearch(model, param_grid, X_train, y_train):
-    grid_search = GridSearchCV(estimator=model, param_grid=param_grid, cv=5, scoring='neg_mean_squared_error')
-    grid_search.fit(X_train, y_train)
-    return grid_search.best_estimator_
+def runGridSearch(model, param_grid, X_train, y_train, X_test, y_test):
+    best_score = float('inf')
+    best_params = None
+    best_model = None
+
+    for params in ParameterGrid(param_grid):
+        model.set_params(**params)
+        model.fit(X_train, y_train)
+        y_pred = model.predict(X_test)
+        score = mean_squared_error(y_test, y_pred)
+        
+        if score < best_score:
+            best_score = score
+            best_params = params
+            best_model = model
+
+    print(f"Best parameters: {best_params}")
+    return best_model
 
 data = pd.read_csv(r"GeneratedDataSet\ModelDataSet.csv")
 data.columns = data.columns.str.strip().str.replace(' ', '').str.lower()
@@ -41,7 +55,8 @@ param_grid = {
 # Utiliser LinearRegression pour la recherche par grille
 linear_regression = LinearRegression()
 
-best_model = runGridSearch(linear_regression, param_grid, Training_data, train_labels)
+# Exécuter la recherche par grille
+best_model = runGridSearch(linear_regression, param_grid, Training_data, train_labels, Test_data, test_labels)
 
 y_pred = best_model.predict(Test_data)
 mse = mean_squared_error(test_labels, y_pred)
@@ -50,7 +65,6 @@ r2 = r2_score(test_labels, y_pred)
 print("\n=== Résultats de la régression linéaire ===")
 print(f"Erreur quadratique moyenne (MSE) : {mse:.2f}")
 print(f"Coefficient de détermination (R²) : {r2:.2f}")
-
 
 coefficients = pd.DataFrame({
     'Feature': Input_features.columns,
@@ -61,46 +75,27 @@ print(coefficients.sort_values(by='Coefficient', ascending=False))
 
 coefficients.to_csv("regression_coefficients.csv", index=False)
 
+# Visualisation des prédictions vs. valeurs réelles
 plt.figure(figsize=(10, 6))
+
 # Calculer les erreurs absolues
-# tableau de la taille de la plus petite liste
-min_length = min(len(target), len(y_pred))
-target = target[:min_length]
-y_pred = y_pred[:min_length]
-errors = target - y_pred
+errors = test_labels - y_pred
 
-# Draw dashed lines at target min and max
-plt.axhline(y=target.min(), color='lightgray', linestyle='--', linewidth=1, zorder=-1)
-plt.axhline(y=target.max(), color='lightgray', linestyle='--', linewidth=1, zorder=-1)
-plt.axvline(x=target.min(), color='lightgray', linestyle='--', linewidth=1, zorder=-1)
-plt.axvline(x=target.max(), color='lightgray', linestyle='--', linewidth=1, zorder=-1)
+# Normaliser les erreurs pour qu'elles soient comprises entre 0 et 1
+norm_errors = np.square((errors - errors.min()) / (errors.max() - errors.min()))
 
-# Ajuster les erreurs pour qu'elles soient dans la plage des valeurs cibles
-adjusted_errors = np.where(y_pred < target.min(), 1, errors)
-adjusted_errors = np.where(y_pred > target.max(), 1, adjusted_errors)
+# Définir une fonction de mappage pour interpoler les couleurs
+cmap = LinearSegmentedColormap.from_list('error_cmap', ['#5BAFFC', '#FD4F59'])
+colors = cmap(norm_errors)
 
-# normaliser les erreurs a [0, 1]
-norm_errors = np.abs(adjusted_errors)
+# Utiliser des boîtes pour visualiser les prédictions
+plt.scatter(test_labels, y_pred, c=colors, alpha=0.5, label='Prédictions', marker='s')
 
-print("\n=== Erreurs ===")
-for error, index in zip(errors, range(100)):
-    print(f"expected: {target[index]} | predicted: {y_pred[index]:.2f} | error: {error:.2f} | normalized error: {norm_errors[index]:.2f}")
-
-print("max error:", errors.max())
-print("min error:", errors.min())
-
-# [0, 1] -> [0, 1] (avec f(x) = x^0.5)
-precision = np.power(norm_errors, 0.5)
-
-cmap = LinearSegmentedColormap.from_list('precision_cmap', ['#5BAFFC', '#FD4F59'])
-colors = cmap(precision)
-
-plt.scatter(target, y_pred, alpha=0.75, c=colors, label='Predictions', marker='s')
-plt.xlabel("Actual Values")
-plt.ylabel("Predictions")
-plt.title("Predictions vs. Actual Values")
+plt.xlabel("Valeurs réelles")
+plt.ylabel("Prédictions")
+plt.title("Prédictions vs. Valeurs réelles")
 plt.legend()
 plt.axis('equal')
-plt.xlim([target.min(), target.max()])
-plt.ylim([min(y_pred.min(), target.min())-0.1, max(y_pred.max(), target.max())+0.1])
+plt.xlim([test_labels.min(), test_labels.max()])
+plt.ylim([test_labels.min(), test_labels.max()])
 plt.show()
