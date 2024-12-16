@@ -7,7 +7,7 @@
 - visualize/validation model
 ---
 ### Models
-- Neural Networks
+- [Neural Networks](https://github.com/TheAypisamFpv/AI-Project/tree/neural-network)
 - [Linear Regression](https://github.com/TheAypisamFpv/AI-Project/tree/linear-regression)
 
 ## Requirements
