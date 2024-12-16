@@ -1,8 +1,9 @@
 import time
 from sklearn.cluster import AgglomerativeClustering
-from NeuralNet import predictWithModel, loadModel
+from NeuralNet import predictWithModel, loadModel, findInputImportance
 from tkinter import Tk, filedialog
 import tensorflow as tf
+import pandas as pd
 import numpy as np
 import pyperclip
 import threading
@@ -10,6 +11,14 @@ import difflib
 import pygame
 import csv
 import os
+
+
+# Set a random seed for reproducibility
+RANDOM_SEED = 42
+np.random.seed(RANDOM_SEED)
+tf.random.set_seed(RANDOM_SEED)
+
+
 class NeuralNetApp:
     def __init__(self):
         # Colors
@@ -291,6 +300,26 @@ class NeuralNetApp:
 
         self.screen.set_clip(self.visualisationArea)
 
+        # Load feature importance from CSV if it exists
+        modelDirectory = os.path.dirname(self.modelFilePath)
+        importanceFilePath = os.path.join(modelDirectory, "FeatureImportance.csv")
+        if os.path.exists(importanceFilePath):
+            featuresImportance = pd.read_csv(importanceFilePath, index_col=0, squeeze=True).to_dict()
+            print(f"Loaded feature importance from {importanceFilePath}")
+        else:
+            featuresImportance = {feature: 1 for feature in self.mapping.keys()}
+            print("Feature importance file not found, using default neuron size")
+
+        maxImportance = max(featuresImportance.values())
+        minImportance = min(featuresImportance.values())
+        importanceRange = maxImportance - minImportance
+
+        def normalizeImportance(importance):
+            if importanceRange == 0:
+                return neuronRadius
+            
+            return neuronRadius + (importance - minImportance) / importanceRange * neuronRadius
+
         # First pass: Draw all neuron connections
         for i in range(len(layers) - 1):
             currentLayerSize = layers[i]
@@ -357,7 +386,16 @@ class NeuralNetApp:
                 normalizedOutput = (clusterOutput + 1) / 2
                 color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
                 y = yStart + np.mean([j * neuronSpacing for j in cluster])
-                pygame.draw.circle(screen, color, (int(x), int(y)), neuronRadius)
+                
+                # Adjust neuron radius based on importance for input layer
+                if i == 0:
+                    feature = list(self.mapping.keys())[cluster[0]]
+                    importance = featuresImportance.get(feature, 1)
+                    adjustedRadius = int(normalizeImportance(importance))
+                else:
+                    adjustedRadius = neuronRadius
+
+                pygame.draw.circle(screen, color, (int(x), int(y)), adjustedRadius)
 
                 # Render neuron output value
                 valueText = f"{clusterOutput:.2f}"
@@ -369,7 +407,8 @@ class NeuralNetApp:
         self.screen.set_clip(None)
 
         print(f"Visualization took {time.time() - timeStart:.2f} seconds")
-        
+
+
     def clearVisualizationArea(self):
         """
         Clear the visualization area.

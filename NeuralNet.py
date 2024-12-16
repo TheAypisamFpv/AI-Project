@@ -21,6 +21,8 @@ from tensorflow.keras.layers import Dense, Dropout  # type: ignore
 from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
 from tensorflow.keras.regularizers import l2  # type: ignore
 
+import shap
+
 from joblib import Parallel, delayed
 import multiprocessing
 
@@ -318,6 +320,70 @@ def detectOverfitting(history, lossFunction):
     print("----------------------------------")
 
 
+def findInputImportance(model, features, numSamples=100, shapSampleSize=200, plotSavePath=None):
+    """Calculate and plot SHAP values to determine feature importance.
+
+    Args:
+        model (tf.keras.Model): The trained neural network model.
+        features (pd.DataFrame): The feature columns of the dataset.
+        num_samples (int): The number of samples to use for summarizing the background data.
+        shap_sample_size (int): The number of samples to use for calculating SHAP values.
+        plotSavePath (str): The directory path to save the plots.
+
+    Returns:
+        dict: A dictionary with features ordered from most to least important.
+
+    Plots:
+        - SHAP summary plot showing feature importance.
+    """
+    print("\nCalculating SHAP values for feature importance...")
+    # Summarize the background data using shap.kmeans
+    backgroundData = shap.kmeans(features, numSamples)
+
+    # Create a SHAP explainer using KernelExplainer for more flexibility
+    modelExplainer = shap.KernelExplainer(model.predict, backgroundData, seed=RANDOM_SEED)
+
+    # Sample a subset of the dataset for SHAP value calculation
+    shapSample = features.sample(shapSampleSize, random_state=RANDOM_SEED)
+
+    # Calculate SHAP values for the sampled dataset
+    shapValues = modelExplainer.shap_values(shapSample)
+
+    # Ensure shapValues is 2D
+    if isinstance(shapValues, list):
+        shapValues = np.array(shapValues)
+        if shapValues.ndim == 3:
+            shapValues = shapValues[0]  # Assuming binary classification, take the first set of SHAP values
+
+    # Reshape shapValues to 2D if necessary
+    if shapValues.ndim == 3:
+        shapValues = shapValues.reshape(shapValues.shape[0], -1)
+
+    # Calculate mean absolute SHAP values for each feature
+    meanAbsShapValues = pd.DataFrame(shapValues, columns=features.columns).abs().mean().sort_values(ascending=False)
+
+    # Convert to dictionary
+    featuresImportance = meanAbsShapValues.to_dict()
+
+    # Plot the SHAP summary plot
+    shap.summary_plot(shapValues, shapSample, show=False)
+    if plotSavePath:
+        plt.savefig(f"{plotSavePath}/shapSummaryPlot.png")
+
+    plt.show()
+    plt.clf()
+
+    # Bar plot of feature importance
+    shap.summary_plot(shapValues, shapSample, plot_type='bar', show=False)
+    if plotSavePath:
+        plt.savefig(f"{plotSavePath}/shapBarPlot.png")
+
+    plt.show()
+    plt.clf()
+
+    return featuresImportance
+
+
 def saveModel(model: tf.keras.Model, filePath:str):
     """Save the trained neural network model to the specified file path.
 
@@ -563,7 +629,7 @@ def predictWithModel2(model, features):
     return predictions
 
 
-def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
+def runGridSearch(features, target, paramGrid: dict, CPULimitation: float = 0.7):
     """Perform a grid search to find the best combination of hyperparameters.
 
     This function tests various combinations of neural network architectures and training parameters
@@ -595,12 +661,23 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
     bestParams = manager.dict()
     progressWheelIndex = manager.Value('i', 0)
     totalElapsedTime = manager.Value('d', 0.0)
+    valAccuracyHistory = manager.list()  # List to store validation accuracy history
+    bestValAccuracyHistory = manager.list()  # List to store best validation accuracy history
 
-    print(getProgressBar(0, progressWheelIndex.value) + "Best Accuracy:  0.00%", end='\r')
+    print(getProgressBar(0, progressWheelIndex.value) + "Best Accuracy: --.--%  |  Time remaining: --h--min --s  |  est. Finish Time: --h--", end='\r')
 
-    def evaluate(params, idx, bestAccuracy, bestParams):
+    def evaluate(params, idx, bestAccuracy, bestParams, valAccuracyHistory):
         trainStartTime = pd.Timestamp.now()
-        optimizer = tf.keras.optimizers.Adam(learning_rate=params['learningRate'])
+
+        optimizerName = params['optimizer']
+        if optimizerName == 'adam':
+            optimizer = tf.keras.optimizers.Adam(learning_rate=params['learningRate'])
+        elif optimizerName == 'rmsprop':
+            optimizer = tf.keras.optimizers.RMSprop(learning_rate=params['learningRate'])
+        elif optimizerName == 'sgd':
+            optimizer = tf.keras.optimizers.SGD(learning_rate=params['learningRate'])
+        else:
+            raise ValueError(f"Unknown optimizer: {optimizer}")
         
         model, history = trainNeuralNet(
             features=features,
@@ -612,7 +689,7 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
             hiddenActivation=params['hiddenActivation'],
             outputActivation=params['outputActivation'],
             metrics=params['metrics'],
-            loss='binary_crossentropy',
+            loss=params['loss'],
             optimizer=optimizer,
             dropoutRate=params['dropoutRate'],
             trainingTestingSplit=0.2,
@@ -620,9 +697,12 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
             verbose=0
         )        
         valAccuracy = history.history.get('val_Accuracy', [0])[-1]
+        valAccuracyHistory.append(valAccuracy)  # Append validation accuracy to history
         if valAccuracy > bestAccuracy.value:
             bestAccuracy.value = valAccuracy
             bestParams.update(params)
+
+        bestValAccuracyHistory.append(bestAccuracy.value)  # Append best validation accuracy to history
 
         # Update index for progress wheel
         progressWheelIndex.value += 1
@@ -633,22 +713,22 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
 
         averageTime = (totalElapsedTime.value / progressWheelIndex.value) / nJobs
 
-        estTime = averageTime * (totalGrid - progressWheelIndex.value)
-        estHours = int(estTime / 3600)
-        estMinutes = int((estTime % 3600) / 60)
-        estSeconds = int(estTime % 60)
+        estTimeRemaining = averageTime * (totalGrid - progressWheelIndex.value)
+        estHours = int(estTimeRemaining // 3600)
+        estMinutes = int((estTimeRemaining % 3600) // 60)
+        estSeconds = int(estTimeRemaining % 60)
 
-        estFinishTime = searchStartTime + pd.Timedelta(seconds=estTime)
+        estFinishTime = pd.Timestamp.now() + pd.Timedelta(seconds=estTimeRemaining)
 
         completion = progressWheelIndex.value / totalGrid
-        estTimeStr = f"{estHours:02}h {estMinutes:02}min {estSeconds:02}s"
-        estFinishTimeStr = f"{estFinishTime.hour:02}h {estFinishTime.minute:02}min {estFinishTime.second:02}s"
+        estTimeStr = f"{estHours:02}h{estMinutes:02}min {estSeconds:02}s"
+        estFinishTimeStr = f"{estFinishTime.hour:02}h{estFinishTime.minute:02}"
         print(getProgressBar(completion, progressWheelIndex.value) + f"Best Accuracy: {bestAccuracy.value * 100:.2f}%  |  Time remaining: {estTimeStr}  |  est. Finish Time: {estFinishTimeStr}", end='\r')
         
         return valAccuracy, params
 
     results = Parallel(n_jobs=nJobs)(
-        delayed(evaluate)(params, idx, bestAccuracy, bestParams) for idx, params in enumerate(grid, 1)
+        delayed(evaluate)(params, idx, bestAccuracy, bestParams, valAccuracyHistory) for idx, params in enumerate(grid, 1)
     )
 
     print(getProgressBar(1, progressWheelIndex.value) + f"Best Accuracy: {bestAccuracy.value * 100:.2f}%", end='\r')
@@ -661,7 +741,31 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
     print("Best Parameters:")
     paramstr = "\n".join([f"\t{k}: {v}" for k, v in bestParams.items()])
     print(paramstr)
-    return dict(bestParams)
+
+    modelDirectory = f'Models/TrainedModel_{bestParams["layers"]}_{bestParams["epochs"]}_{bestParams["batchSize"]}_{bestParams["dropoutRate"]}_{bestParams["l2_reg"]}_{bestParams["inputActivation"]}_{bestParams["hiddenActivation"]}_{bestParams["outputActivation"]}_{bestParams["metrics"]}_{bestParams["loss"]}_{bestParams["optimizer"]}({bestParams["learningRate"]})_0.2/'
+    backgroundColor = '#222222'
+
+    if not os.path.exists(modelDirectory):
+        os.makedirs(modelDirectory)
+
+    # Plot the validation accuracy history
+    plt.figure(figsize=(10, 6), facecolor=backgroundColor)
+    plt.gca().set_facecolor(backgroundColor)
+    plt.plot(valAccuracyHistory, linestyle='-', color='#FD4F59', label='Validation Accuracy')
+    plt.plot(bestValAccuracyHistory, linestyle='-', color='#5BAFFC', label='Best Validation Accuracy')
+    plt.gca().tick_params(axis='y', colors='white')
+    plt.gca().tick_params(axis='x', colors='white')
+    plt.title('Grid Search Validation Accuracy History', color='white')
+    plt.xlabel('Iteration', color='white')
+    plt.ylabel('Validation Accuracy', color='white')
+    plt.legend()
+    plt.grid(True)
+    
+    # Save the plot before showing it
+    plt.savefig(f'{modelDirectory}ValidationAccuracyHistory.png')
+    plt.show()
+
+    return dict(bestParams), modelDirectory
 
 
 def runModelTraining():
@@ -702,42 +806,43 @@ def runModelTraining():
 
     print()
 
-    tableToDrop = ['AverageHoursWorked']
+    tableToDrop =[] # ['AverageHoursWorked']
 
     # Load and preprocess the dataset
     datasetFilePat = r'GeneratedDataSet\ModelDataSet.csv'
     features, target = loadAndPreprocessData(datasetFilePat, tableToDrop)
 
     # Define hyperparameter grid for grid search
-    paramGrid = {
+    hyperparameterGrid = {
         'layers': [
-            [features.shape[1], 256, 128, 64, 1]
+            # [features.shape[1], 128, 64, 32, 1],
+            [features.shape[1], 256, 128, 64, 1],
         ],
-        'epochs': [50, 100],
-        'batchSize': [20, 32],
-        'dropoutRate': [0.3, 0.5],
+        'epochs': [100],
+        'batchSize': [32],
+        'dropoutRate': [0.3],
         'l2_reg': [0.001, 0.01],
         'learningRate': [0.0005, 0.001],
         "metrics": [
-            ['Accuracy'],
-            ['Accuracy', 'Recall'],
+            ['Accuracy', 'Recall', 'Precision'],
             ['Accuracy', 'Precision'],
-            ['Accuracy', 'Recall', 'Precision']
+            ['Accuracy', 'Recall'],
+            ['Accuracy'],
             ],
         'inputActivation': ['relu', 'tanh'],
         'hiddenActivation': ['relu', 'tanh'],
         'outputActivation': ['sigmoid'],
-        'loss': ['binary_crossentropy', 'mean_squared_error']
+        'loss': ['binary_crossentropy', 'mean_squared_error'],
+        'optimizer': ['adam']
     }
 
     CPULimitation = 1.0
 
     # Start hyperparameter grid search
     print("\nStarting Grid Search for Hyperparameter Optimization...")
-    bestParams = runGridSearch(features, target, paramGrid, CPULimitation)
+    bestParams, modelDirectory = runGridSearch(features, target, hyperparameterGrid, CPULimitation)
 
     # Create the model directory after finding the best parameters
-    modelDirectory = f'Models/TrainedModel_{bestParams["layers"]}_{bestParams["epochs"]}_{bestParams["batchSize"]}_{bestParams["dropoutRate"]}_{bestParams["l2_reg"]}_{bestParams["inputActivation"]}_{bestParams["hiddenActivation"]}_{bestParams["outputActivation"]}_Accuracy_{bestParams["loss"]}_Adam({bestParams["learningRate"]})_0.2/'
     os.makedirs(os.path.dirname(modelDirectory), exist_ok=True)
 
     defaultMappingFilePath = r'GeneratedDataSet\MappingValues.csv'
@@ -758,7 +863,7 @@ def runModelTraining():
         inputActivation=bestParams['inputActivation'],
         hiddenActivation=bestParams['hiddenActivation'],
         outputActivation=bestParams['outputActivation'],
-        metrics=['Accuracy'],
+        metrics=bestParams['metrics'],
         loss=bestParams['loss'],
         optimizer=optimizer,
         dropoutRate=bestParams['dropoutRate'],
@@ -797,6 +902,18 @@ def runModelTraining():
     print(f"Saving learning curve gif...")
     plot.save(f'{modelName}.gif', writer=animation.PillowWriter(fps=30))
     print(f"Learning curve saved as '{modelName}.gif'")
+
+
+    # Find feature importance using SHAP values 
+    featuresImportance = findInputImportance(model, features, plotSavePath=modelDirectory)
+
+    # Save the feature importance to a file
+    importanceFilePath = modelDirectory + 'FeatureImportance.csv'
+    
+    featuresImportance = pd.DataFrame(featuresImportance.items(), columns=['Feature', 'Importance'])
+    featuresImportance.to_csv(importanceFilePath, index=False)
+    print(f"Feature importance saved as '{importanceFilePath}'")
+
 
     # Return the path where the model was saved
     return savePath
