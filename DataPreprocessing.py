@@ -7,6 +7,12 @@ from datetime import datetime
 dataSetsPath = 'DataSets/'
 modelDataSetsPath = 'GeneratedDataSet/'
 
+# Define normalization range
+normalizationRange = (-1, 1)
+
+if normalizationRange[0] >= normalizationRange[1]:
+    raise ValueError("Invalid normalization range. The minimum value must be less than the maximum value.")
+
 # Step 1: Load datasets
 print("Loading datasets...")
 generalData = pd.read_csv(dataSetsPath + 'general_data.csv')
@@ -72,7 +78,7 @@ print(f"Number of rows removed due to missing data: {rowsRemoved} ({(rowsRemoved
 # Step 6: Identify numerical and non-numerical columns
 print("Identifying numerical and non-numerical columns...")
 numericalColumns = []
-nonCumericalColumns = []
+nonNumericalColumns = []
 
 for column in finalData.columns:
     if column == 'EmployeeID' or column == 'Attrition':
@@ -84,22 +90,22 @@ for column in finalData.columns:
         float(sample_value)
         numericalColumns.append(column)
     except (ValueError, TypeError):
-        nonCumericalColumns.append(column)
+        nonNumericalColumns.append(column)
 
 print("\nNumerical columns:", numericalColumns)
-print("Non-numerical columns:", nonCumericalColumns)
+print("Non-numerical columns:", nonNumericalColumns)
 
 # Print unique values and normalize non-numerical columns
 print("\nNon-numerical columns unique values and mapping:")
 mappingDict = {}
-for column in nonCumericalColumns:
+for column in nonNumericalColumns:
     unique_values = finalData[column].unique()
     n_values = len(unique_values)
     print(f"\n{column} - {n_values} unique values:")
     
     # Create mapping to normalized values between -1 and 1
-    step = 2 / (n_values - 1) if n_values > 1 else 0
-    value_map = {val: -1 + i * step for i, val in enumerate(sorted(unique_values))}
+    step = (normalizationRange[1] - normalizationRange[0]) / (n_values - 1) if n_values > 1 else 0
+    value_map = {val: normalizationRange[0] + i * step for i, val in enumerate(sorted(unique_values))}
     
     # Print mapping
     for val, normalized in value_map.items():
@@ -143,9 +149,8 @@ for column in numericalColumns:
         
     mappingDict[column] = [minValue, maxValue]
 
-scaler = MinMaxScaler(feature_range=(-1, 1))
+scaler = MinMaxScaler(feature_range=normalizationRange)
 finalData[numericalColumns] = scaler.fit_transform(finalData[numericalColumns])
-
 
 # Reorder mappingDict to match the order of columns in finalData
 ordered_mapping_dict = {column: mappingDict[column] for column in finalData.columns if column in mappingDict}
@@ -154,7 +159,6 @@ ordered_mapping_dict = {column: mappingDict[column] for column in finalData.colu
 mapping_df = pd.DataFrame([ordered_mapping_dict])
 mapping_df.to_csv(modelDataSetsPath + 'MappingValues.csv', index=False)
 
-
 # Final check for any missing data (and remove the row where 'AverageHoursWorked' is missing)
 print("\nFinal check for missing data...")
 initialRowCount = finalData.shape[0]
@@ -162,7 +166,6 @@ finalData.dropna(inplace=True)
 finalRowCount = finalData.shape[0]
 rowsRemoved = initialRowCount - finalRowCount
 print(f"Number of rows removed due to missing data: {rowsRemoved} ({(rowsRemoved/initialRowCount)*100:.2f}%)")
-
 
 # Print the removed percentage of rows
 print(f"\nInitial row count: {finalDataInitialRowCount}")
