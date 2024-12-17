@@ -395,7 +395,7 @@ def findInputImportance(model, features, numSamples=50, shapSampleSize=100, numR
     plt.clf()
 
     # Bar plot of feature importance
-    shap.summary_plot(meanShapValues.values, shapSample, plot_type='bar', show=False, max_display=10)
+    shap.summary_plot(meanShapValues.values, shapSample, plot_type='bar', show=False, max_display=13)
     if plotSavePath:
         plt.savefig(f"{plotSavePath}/shapBarPlot.png")
 
@@ -692,7 +692,7 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
             loss=params['loss'],
             optimizer=optimizer,
             dropoutRate=params['dropoutRate'],
-            trainingTestingSplit=0.2,
+            trainingTestingSplit=params['trainingTestingSplit'],
             l2_reg=params['l2_reg'],
             verbose=0
         )        
@@ -830,7 +830,7 @@ def runModelTraining():
 
     print()
 
-    tableToDrop = ['AverageHoursWorked', 'Age']
+    tableToDrop = ['AverageHoursWorked']
 
     # Load and preprocess the dataset
     datasetFilePat = r'GeneratedDataSet\ModelDataSet.csv'
@@ -854,6 +854,7 @@ def runModelTraining():
             ['Accuracy', 'Recall'],
             ['Accuracy'],
         ],
+        'trainingTestingSplit': [0.2, 0.3],
         'inputActivation': ['relu', 'tanh'],
         'hiddenActivation': ['relu', 'tanh'],
         'outputActivation': ['sigmoid'],

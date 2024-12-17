@@ -1,3 +1,4 @@
+import json
 import time
 from sklearn.cluster import AgglomerativeClustering
 from NeuralNet import predictWithModel, loadModel, findInputImportance
@@ -31,22 +32,29 @@ class NeuralNetApp:
         self.ACTIVE_COLOR = pygame.Color("#555555")  # Changed ACTIVE_COLOR for better visibility
         
         # Font and input box settings
-        self.FONT_SIZE = 15
+        self.FONT_SIZE = 15 # Font size for input text
+        # Width and height of input boxes
+        self.INPUT_BOX_TOP_MARGIN = 10
+        self.INPUT_BOX_BOTTOM_MARGIN = 10
         self.INPUT_BOX_WIDTH = 140
         self.INPUT_BOX_HEIGHT = 20
+        
+        # Minimum window size
         self.MIN_WIDTH = 1000
         self.MIN_HEIGHT = 800
-        self.TOP_BOTTOM_MARGIN = 10
+        self.TOP_BOTTOM_MARGIN = self.INPUT_BOX_TOP_MARGIN + self.INPUT_BOX_BOTTOM_MARGIN  # Margin at the top and bottom of the window
         self.MAX_HELP_TEXT_WIDTH = 400  # Maximum width for input help text
         self.INPUT_TEXT_HORIZONTAL_SPACING = 20  # Initial horizontal spacing
         self.INPUT_TEXT_VERTICAL_SPACING = 5    # Initial vertical spacing
-        self.NORMALIZATION_RANGE = (-1, 1)
+        self.NORMALIZATION_RANGE = (-1, 1) # used to renormalize the input values to the range of the model
 
         # FPS setting
         self.fps = 60
 
         # Clustering settings
-        self.clusterThreshold = 30  # Number of neurons above which clustering is applied
+        self.clusterThreshold = 30  # Number of neurons with 
+        self.enableClustering = True  # Variable to toggle clustering
+
 
         # Initialize Pygame
         pygame.init()
@@ -77,8 +85,8 @@ class NeuralNetApp:
         # Margins for visualization
         self.leftMargin = 600
         self.rightMargin = 150
-        self.topMargin = 10
-        self.bottomMargin = 10
+        self.topMargin = self.INPUT_BOX_TOP_MARGIN # top margin is the same as the start of the input box so that the input boxes are aligned with the visualization
+        self.bottomMargin = self.INPUT_BOX_BOTTOM_MARGIN
         self.visualisationArea = pygame.Rect(
                 self.leftMargin-10,
                 self.topMargin-10,
@@ -104,16 +112,44 @@ class NeuralNetApp:
         self.MIN_CONNECTION_WIDTH = 1
         self.MAX_CONNECTION_WIDTH = 10
 
+    def isFloat(self, value):
+        """Check if the string can be converted to a float."""
+        try:
+            float(value)
+            return True
+        except ValueError:
+            return False
+
     def loadModelFeaturesMapping(self):
         """
         Load the mapping values for the model features from a CSV file.
         """
 
-        directory = self.modelFilePath.rsplit("/", 1)[0]
+        directory = self.modelFilePath.rsplit("/", 1)[0] + "/"
+        modelName = self.modelFilePath.rsplit("/", 1)[1].rsplit(".", 1)[0]
         if not directory:
-            directory = "."
+            directory = "./"
 
-        mappingFilePath = directory + r"/MappingValues.csv"
+        mappingFilePath = directory + r"MappingValues.csv"
+        paramsFilePath = directory + modelName + '.params'
+
+        if not os.path.exists(paramsFilePath):
+            print(f"No .params file found at {paramsFilePath}, using default random seed (42)")
+        else:  
+            # load the randomSeed in .params file (json format)
+            with open(paramsFilePath, 'r') as file:
+                params = json.load(file)
+                if not 'randomSeed' in params:
+                    print(f"No random seed found in {paramsFilePath}, using default seed (42)")
+                try:
+                    np.random.seed(int(params['randomSeed']))
+                    tf.random.set_seed(int(params['randomSeed']))
+                    print(f"Loaded random seed from {paramsFilePath}")
+                except ValueError:
+                    print(f"Invalid random seed in {paramsFilePath}, using default seed (42)")
+
+                        
+                        
 
         if not os.path.exists(mappingFilePath):
             # use default values
@@ -125,7 +161,7 @@ class NeuralNetApp:
             print()
             mappingFilePath = r"GeneratedDataSet\MappingValues.csv"
         else:
-            print(f"\nLoaded mapping values from {mappingFilePath}\n")
+            print(f"\nLoading mapping values from {mappingFilePath}...\n")
 
         
         mapping = {}
@@ -150,6 +186,7 @@ class NeuralNetApp:
         root.destroy()
         return filePath
 
+
     def wrapText(self, text, font, maxWidth):
         """
         Wrap text to fit within a given width.
@@ -173,6 +210,7 @@ class NeuralNetApp:
             lines.append(' '.join(currentLine))
 
         return lines
+
 
     def getPredictionThread(self):
         """
@@ -242,6 +280,7 @@ class NeuralNetApp:
         prediction, intermediateOutputs = predictWithModel(self.model, inputData)
         return prediction, intermediateOutputs
 
+
     def interpolateColor(self, colorA, colorB, factor:float):
         """Interpolate between two colors with a given factor (0 to 1)."""
 
@@ -260,6 +299,9 @@ class NeuralNetApp:
         """
         Cluster neurons in a layer using hierarchical clustering.
         """
+        if not self.enableClustering:
+            return [(i,) for i in range(layerOutputs.shape[1])]  # No clustering if disabled
+
         numNeurons = layerOutputs.shape[1]
         if numNeurons <= self.clusterThreshold:
             return [(i,) for i in range(numNeurons)]  # No clustering needed
@@ -271,7 +313,7 @@ class NeuralNetApp:
             clusters[clusterIndex].append(neuronIndex)
         return clusters
 
-    def visualizeNeurons(self, screen, model, inputData, intermediateOutputs):
+    def visualizeNeurons(self, screen, model, intermediateOutputs):
         """
         Create a visualization of the neural network with neurons displaying their output values,
         and outgoing connections colored based on the neuron's output value.
@@ -280,27 +322,28 @@ class NeuralNetApp:
         
         # Combine input data with intermediate outputs
         allOutputs = intermediateOutputs
-
+    
         numLayers = len(allOutputs)
         maxNeurons = max([layerOutput.shape[1] for layerOutput in allOutputs])
-
+    
         padding = 10
         startWidth = self.leftMargin + padding
         availableWidth = self.screen.get_width() - self.leftMargin - self.rightMargin - padding*2
         layerSpacing = availableWidth / (numLayers - 1)
-
+    
         startHeight = self.topMargin + 10
         availableHeight = self.screen.get_height() - self.topMargin - self.bottomMargin - padding*2
-
+    
         neuronRadius = max(10, int(min(layerSpacing, availableHeight / maxNeurons) / 2))
-
+    
         layers = [layerOutput.shape[1] for layerOutput in allOutputs]
-
+    
         # Extract weights from the model
         weights = [layer.get_weights()[0] for layer in model.layers if isinstance(layer, tf.keras.layers.Dense)]
-
+        lineWidth = 3
+    
         self.screen.set_clip(self.visualisationArea)
-
+    
         # Load feature importance from CSV if it exists
         modelDirectory = os.path.dirname(self.modelFilePath)
         importanceFilePath = os.path.join(modelDirectory, "FeatureImportance.csv")
@@ -310,70 +353,76 @@ class NeuralNetApp:
         else:
             featuresImportance = {feature: 1 for feature in self.mapping.keys()}
             print("Feature importance file not found, using default neuron size")
-
+    
         maxImportance = max(featuresImportance.values())
         minImportance = min(featuresImportance.values())
         importanceRange = maxImportance - minImportance 
-
+    
         def normalizeImportance(importance):
             defaultNeuronSize = 7
             if importanceRange == 0:
                 return neuronRadius
             
             return defaultNeuronSize + (importance - minImportance) / importanceRange * defaultNeuronSize
-
-        # First pass: Draw all neuron connections
+    
+        # First pass: sort connections by weight
+        connections = []
         for i in range(len(layers) - 1):
             currentLayerSize = layers[i]
             nextLayerSize = layers[i + 1]
             x = startWidth + i * layerSpacing
             nextX = startWidth + (i + 1) * layerSpacing
-
+    
             currentNeuronSpacing = availableHeight / currentLayerSize
             nextNeuronSpacing = availableHeight / nextLayerSize
-
+    
             currentTotalLayerHeight = (currentLayerSize - 1) * currentNeuronSpacing
             currentYStart = startHeight + (availableHeight - currentTotalLayerHeight) / 2
-
+    
             nextTotalLayerHeight = (nextLayerSize - 1) * nextNeuronSpacing
             nextYStart = startHeight + (availableHeight - nextTotalLayerHeight) / 2
-
+    
             # Cluster neurons in the current and next layers
             currentClusters = self.clusterNeurons(allOutputs[i])
             nextClusters = self.clusterNeurons(allOutputs[i + 1])
-
+    
             # Normalize weights for the current layer
             currentWeights = weights[i]
             maxWeight = np.max(np.abs(currentWeights))
             minWeight = np.min(np.abs(currentWeights))
             weightRange = maxWeight - minWeight
-
-            def normalizeWeight(weight):
-                return self.MIN_CONNECTION_WIDTH + (self.MAX_CONNECTION_WIDTH - self.MIN_CONNECTION_WIDTH) * (np.abs(weight) - minWeight) / weightRange
-
+    
             for currentCluster in currentClusters:
                 currentClusterOutput = np.mean([allOutputs[i][0][j] for j in currentCluster])
                 normalizedOutput = (currentClusterOutput + 1) / 2
                 color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
                 y = currentYStart + np.mean([j * currentNeuronSpacing for j in currentCluster])
-
+    
                 for nextCluster in nextClusters:
-                    nextClusterOutput = np.mean([allOutputs[i + 1][0][j] for j in nextCluster])
                     nextY = nextYStart + np.mean([j * nextNeuronSpacing for j in nextCluster])
                     weight = np.mean([currentWeights[j, k] for j in currentCluster for k in nextCluster])
-                    lineWidth = int(normalizeWeight(weight))
                     
-                    weightAdjustedColor = pygame.Color(color[0], color[1], color[2], int(255 * np.abs(weight / maxWeight))) 
+                    # Adjust alpha channel based on weight
+                    alphaFactor = (np.abs(weight) - minWeight) / weightRange
+                    blendedColor = self.interpolateColor(color, self.BACKGROUND_COLOR, 1 - alphaFactor)
                     
-                    # Draw multiple aaline segments to simulate a thicker line
-                    lineSpaceing = 3
-                    for offset in range(-lineWidth // lineSpaceing, lineWidth // lineSpaceing + 1):
-                        if offset == -lineWidth // 3 or offset == lineWidth // 3:
-                            pygame.draw.aaline(screen, weightAdjustedColor, (int(x), int(y + offset)), (int(nextX), int(nextY + offset)), blend=1)
-                        else:
-                            pygame.draw.line(screen, weightAdjustedColor, (int(x), int(y + offset)), (int(nextX), int(nextY + offset)))
+                    connections.append((weight, (x, y, nextX, nextY, blendedColor)))
+    
+        # Sort connections by weight
+        connections.sort(key=lambda conn: abs(conn[0]))
+    
+        # Draw connections
+        for _, (x, y, nextX, nextY, blendedColor) in connections:
+            pygame.draw.aaline(screen, blendedColor, (int(x), int(y)), (int(nextX), int(nextY)), blend=1)
 
+            # lineSpaceing = 3
+            # for offset in range(-lineWidth // lineSpaceing, lineWidth // lineSpaceing + 1):
+            #     if offset == -lineWidth // 3 or offset == lineWidth // 3:
+            #         pygame.draw.aaline(screen, blendedColor, (int(x), int(y + offset)), (int(nextX), int(nextY + offset)), blend=1)
+            #     else:
+            #         pygame.draw.line(screen, blendedColor, (int(x), int(y + offset)), (int(nextX), int(nextY + offset)))
 
+    
         # Second pass: Draw all neurons and their values
         for i in range(len(layers)):
             layerSize = layers[i]
@@ -381,13 +430,12 @@ class NeuralNetApp:
             neuronSpacing = availableHeight / layerSize
             totalLayerHeight = (layerSize - 1) * neuronSpacing
             yStart = startHeight + (availableHeight - totalLayerHeight) / 2
-
+    
             # Cluster neurons in the current layer
             clusters = self.clusterNeurons(allOutputs[i])
-
+    
             for cluster in clusters:
                 clusterOutput = np.mean([allOutputs[i][0][j] for j in cluster])
-                # normalized to 
                 normalizedOutput = (clusterOutput + 1) / 2
                 color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
                 y = yStart + np.mean([j * neuronSpacing for j in cluster])
@@ -399,22 +447,19 @@ class NeuralNetApp:
                     adjustedRadius = int(normalizeImportance(importance))
                 else:
                     adjustedRadius = neuronRadius
-
-                # weightAdjustedColor = pygame.Color(color[0], color[1], color[2], int(255 * np.abs(clusterOutput)))
-
+    
                 pygame.draw.circle(screen, color, (int(x), int(y)), adjustedRadius)
-
+    
                 # Render neuron output value
                 valueText = f"{clusterOutput:.2f}"
                 textSurface = self.font.render(valueText, True, self.TEXT_COLOR)
                 textRect = textSurface.get_rect(center=(int(x), int(y)))
                 screen.blit(textSurface, textRect)
-
+    
         # Reset clipping area
         self.screen.set_clip(None)
-
+    
         print(f"Visualization took {time.time() - timeStart:.2f} seconds")
-
 
     def clearVisualizationArea(self):
         """
@@ -424,13 +469,43 @@ class NeuralNetApp:
         self.screen.fill(self.BACKGROUND_COLOR)
         self.screen.set_clip(None)
 
+    def updateInputBoxes(self):
+        """
+        Update the input boxes based on the current window size.
+        Creates them if they don't exist yet.
+        """
+        
+        verticalSpacing = (self.screen.get_height() - self.INPUT_BOX_TOP_MARGIN - self.INPUT_BOX_BOTTOM_MARGIN - self.INPUT_BOX_HEIGHT) / len(self.mapping)
+        inputBoxStartY = self.INPUT_BOX_TOP_MARGIN + self.INPUT_BOX_HEIGHT
+        
+        if not self.inputBoxes:
+            for i, (feature, values) in enumerate(self.mapping.items()):
+                inputBox = pygame.Rect(
+                    10,
+                    inputBoxStartY + int(verticalSpacing * i),
+                    self.INPUT_BOX_WIDTH,
+                    self.INPUT_BOX_HEIGHT
+                )
+                self.inputBoxes.append((feature, inputBox, values))
+                self.inputValues[feature] = ""
+        else:
+            for i, (feature, inputBox, values) in enumerate(self.inputBoxes):
+                newY = inputBoxStartY + int(verticalSpacing * i)
+                self.inputBoxes[i] = (feature, pygame.Rect(10, newY, self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT), values)
+                
 
     def mainLoop(self, visualisation=False):
         self.screen.fill(self.BACKGROUND_COLOR)
+
+        if not self.enableClustering:
+            print("\n=============================================")
+            print("Clustering is disabled. This may lead to a large number of neurons being visualized, thus slowing down the visualization.")
+            print("Use clustering for models with a large number of neurons to improve performance.")
+            print("=============================================\n")
+        
         while self.running:
             # Set the clipping area for the visualization
             
-    
             # top part
             self.screen.set_clip(
                 pygame.Rect(
@@ -516,10 +591,7 @@ class NeuralNetApp:
                     
                     # Update input box vertical positions based on new window height
                     if self.modelFilePath:
-                        verticalSpacing = (self.screen.get_height() - 2 * self.TOP_BOTTOM_MARGIN) / len(self.mapping)
-                        for i, (feature, inputBox, values) in enumerate(self.inputBoxes):
-                            newY = self.TOP_BOTTOM_MARGIN + int(verticalSpacing * i)
-                            self.inputBoxes[i] = (feature, pygame.Rect(10, newY, self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT), values)
+                        self.updateInputBoxes()
                 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
                     # Handle mouse clicks
@@ -530,12 +602,7 @@ class NeuralNetApp:
                             if self.modelFilePath:
                                 self.model = loadModel(self.modelFilePath)
                                 self.mapping = self.loadModelFeaturesMapping()
-                                numFeatures = len(self.mapping)
-                                verticalSpacing = (self.screen.get_height() - 2 * self.TOP_BOTTOM_MARGIN) / numFeatures
-                                for i, (feature, values) in enumerate(self.mapping.items()):
-                                    inputBox = pygame.Rect(10, self.TOP_BOTTOM_MARGIN + int(verticalSpacing * i), self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT)
-                                    self.inputBoxes.append((feature, inputBox, values))
-                                    self.inputValues[feature] = ""
+                                self.updateInputBoxes()
                     else:
                         # If model is loaded, check if any input box is clicked
                         for feature, inputBox, values in self.inputBoxes:
@@ -642,7 +709,7 @@ class NeuralNetApp:
                         self.intermediateOutputs = None
                         
                         if visualisation:
-                            self.visualizeNeurons(self.screen, self.model, inputData, intermediateOutputs)
+                            self.visualizeNeurons(self.screen, self.model, intermediateOutputs)
 
                 if prediction:
                     # [0, 1] -> [-1, 1]
@@ -659,10 +726,11 @@ class NeuralNetApp:
                     predictionX = self.screen.get_width() - self.rightMargin - predictionSurface.get_width() - 10
                     self.screen.blit(predictionSurface, (predictionX, predictionY))
 
-                     # Draw text above the visualization area
-                    visualisationText = self.font.render("Neurons are visualized using grouping", True, self.TEXT_COLOR)
-                    visualisationTextPos = (self.leftMargin, self.topMargin - 5)
-                    self.screen.blit(visualisationText, visualisationTextPos)
+                    # Draw text above the visualization area
+                    if self.enableClustering:
+                        visualisationText = self.font.render("Neurons are visualized using clustering", True, self.TEXT_COLOR)
+                        visualisationTextPos = (self.leftMargin, self.topMargin - 5)
+                        self.screen.blit(visualisationText, visualisationTextPos)
     
             # Draw "Select Model" button only if no model is selected
             if not self.modelFilePath:
@@ -679,13 +747,6 @@ class NeuralNetApp:
             self.clock.tick(self.fps)
 
 
-    def isFloat(self, value):
-        """Check if the string can be converted to a float."""
-        try:
-            float(value)
-            return True
-        except ValueError:
-            return False
 
 def main():
     neuralNetVis = NeuralNetApp()
