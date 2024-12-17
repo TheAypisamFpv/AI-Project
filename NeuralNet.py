@@ -15,10 +15,11 @@ os.environ['TF_CPP_MIN_LOG_LEVEL'] = '3'
 os.environ['TF_ENABLE_ONEDNN_OPTS'] = '0'
 
 import tensorflow as tf
+from tensorflow.keras.layers import BatchNormalization  # type: ignore
+from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
+from tensorflow.keras.layers import Dense, Dropout  # type: ignore
 from tensorflow.keras.models import load_model  # type: ignore
 from tensorflow.keras.models import Sequential  # type: ignore
-from tensorflow.keras.layers import Dense, Dropout  # type: ignore
-from tensorflow.keras.callbacks import EarlyStopping  # type: ignore
 from tensorflow.keras.regularizers import l2  # type: ignore
 
 import shap
@@ -159,11 +160,13 @@ def buildNeuralNetModel(
     # Add input layer with specified activation and L2 regularization
     model.add(tf.keras.layers.Input(shape=(layers[0],)))
     model.add(Dense(layers[1], activation=inputActivation, kernel_regularizer=l2(l2_reg)))
+    model.add(BatchNormalization())
     model.add(Dropout(dropoutRate))
 
     # Add hidden layers with specified activation, dropout, and L2 regularization
-    for neurons in layers[2:-1]:
-        model.add(Dense(neurons, activation=hiddenActivation, kernel_regularizer=l2(l2_reg)))
+    for hiddenLayer in layers[2:-1]:
+        model.add(Dense(hiddenLayer, activation=hiddenActivation, kernel_regularizer=l2(l2_reg)))
+        model.add(BatchNormalization())    
         model.add(Dropout(dropoutRate))
 
     # Add output layer with specified activation and L2 regularization
@@ -255,6 +258,7 @@ def trainNeuralNet(
 
     # Define early stopping callback to prevent overfitting
     earlyStopping = EarlyStopping(monitor='val_loss', patience=10, restore_best_weights=True)
+    reduceLRonPlateau = tf.keras.callbacks.ReduceLROnPlateau(monitor='val_loss', factor=0.1, patience=5, verbose=verbose)
 
     # Train the model
     if verbose: print("\nTraining the model...")
@@ -266,7 +270,7 @@ def trainNeuralNet(
         validation_split=trainingTestingSplit,
         verbose=verbose,
         class_weight=classWeights,
-        callbacks=[earlyStopping]
+        callbacks=[earlyStopping, reduceLRonPlateau]
     )
 
     # Evaluate the model on the test set
@@ -320,14 +324,15 @@ def detectOverfitting(history, lossFunction):
     print("----------------------------------")
 
 
-def findInputImportance(model, features, numSamples=100, shapSampleSize=200, plotSavePath=None):
+def findInputImportance(model, features, numSamples=50, shapSampleSize=100, numRuns=5, plotSavePath=None):
     """Calculate and plot SHAP values to determine feature importance.
 
     Args:
         model (tf.keras.Model): The trained neural network model.
         features (pd.DataFrame): The feature columns of the dataset.
-        num_samples (int): The number of samples to use for summarizing the background data.
-        shap_sample_size (int): The number of samples to use for calculating SHAP values.
+        numSamples (int): The number of samples to use for summarizing the background data.
+        shapSampleSize (int): The number of samples to use for calculating SHAP values.
+        numRuns (int): The number of runs to average the SHAP values.
         plotSavePath (str): The directory path to save the plots.
 
     Returns:
@@ -337,36 +342,51 @@ def findInputImportance(model, features, numSamples=100, shapSampleSize=200, plo
         - SHAP summary plot showing feature importance.
     """
     print("\nCalculating SHAP values for feature importance...")
-    # Summarize the background data using shap.kmeans
-    backgroundData = shap.kmeans(features, numSamples)
 
-    # Create a SHAP explainer using KernelExplainer for more flexibility
-    modelExplainer = shap.KernelExplainer(model.predict, backgroundData, seed=RANDOM_SEED)
+    # Initialize a DataFrame to accumulate SHAP values
+    accumulatedShapValues = pd.DataFrame(0, index=np.arange(shapSampleSize), columns=features.columns)
 
-    # Sample a subset of the dataset for SHAP value calculation
-    shapSample = features.sample(shapSampleSize, random_state=RANDOM_SEED)
+    for run in range(numRuns):
+        print(getProgressBar(run / numRuns, run) + f" Run {run + 1}/{numRuns}", end='\r')
 
-    # Calculate SHAP values for the sampled dataset
-    shapValues = modelExplainer.shap_values(shapSample)
+        # Summarize the background data using shap.kmeans
+        backgroundData = shap.kmeans(features, numSamples)
 
-    # Ensure shapValues is 2D
-    if isinstance(shapValues, list):
-        shapValues = np.array(shapValues)
+        # Create a SHAP explainer using KernelExplainer for more flexibility
+        modelExplainer = shap.KernelExplainer(model.predict, backgroundData, seed=RANDOM_SEED)
+
+        # Sample a subset of the dataset for SHAP value calculation
+        shapSample = features.sample(shapSampleSize, random_state=RANDOM_SEED + run)
+
+        # Calculate SHAP values for the sampled dataset
+        shapValues = modelExplainer.shap_values(shapSample)
+
+        # Ensure shapValues is 2D
+        if isinstance(shapValues, list):
+            shapValues = np.array(shapValues)
+            if shapValues.ndim == 3:
+                shapValues = shapValues[0]  # Assuming binary classification, take the first set of SHAP values
+
+        # Reshape shapValues to 2D if necessary
         if shapValues.ndim == 3:
-            shapValues = shapValues[0]  # Assuming binary classification, take the first set of SHAP values
+            shapValues = shapValues.reshape(shapValues.shape[0], -1)
 
-    # Reshape shapValues to 2D if necessary
-    if shapValues.ndim == 3:
-        shapValues = shapValues.reshape(shapValues.shape[0], -1)
+        # Accumulate SHAP values
+        accumulatedShapValues += pd.DataFrame(shapValues, columns=features.columns)
+
+    print(getProgressBar(1, numRuns) + " SHAP calculation completed.", end='\r')
+
+    # Average the accumulated SHAP values
+    meanShapValues = accumulatedShapValues / numRuns
 
     # Calculate mean absolute SHAP values for each feature
-    meanAbsShapValues = pd.DataFrame(shapValues, columns=features.columns).abs().mean().sort_values(ascending=False)
+    meanAbsShapValues = meanShapValues.abs().mean().sort_values(ascending=False)
 
     # Convert to dictionary
     featuresImportance = meanAbsShapValues.to_dict()
 
     # Plot the SHAP summary plot
-    shap.summary_plot(shapValues, shapSample, show=False)
+    shap.summary_plot(meanShapValues.values, shapSample, show=False, max_display=10)
     if plotSavePath:
         plt.savefig(f"{plotSavePath}/shapSummaryPlot.png")
 
@@ -374,7 +394,7 @@ def findInputImportance(model, features, numSamples=100, shapSampleSize=200, plo
     plt.clf()
 
     # Bar plot of feature importance
-    shap.summary_plot(shapValues, shapSample, plot_type='bar', show=False)
+    shap.summary_plot(meanShapValues.values, shapSample, plot_type='bar', show=False, max_display=10)
     if plotSavePath:
         plt.savefig(f"{plotSavePath}/shapBarPlot.png")
 
@@ -435,10 +455,6 @@ def plotLearningCurve(history, epochs, elapsedTime, lossFunction):
     fig.patch.set_facecolor(backgroundColor)
     ax1.set_facecolor(backgroundColor)
     ax2.set_facecolor(backgroundColor)
-
-    # Determine the minimum and maximum values for loss and val_loss
-    minLoss = min(min(history.history['loss']), min(history.history['val_loss']))
-    maxLoss = max(max(history.history['loss']), max(history.history['val_loss']))
 
     # Adjust val_loss if the loss function is squared_hinge
     if lossFunction == 'squared_hinge':
@@ -612,24 +628,6 @@ def predictWithModel(model, inputData):
     return prediction, layerOuts
 
 
-def predictWithModel2(model, features):
-    """Predict target values using the trained model for the given features.
-
-    Args:
-        model (tf.keras.Model): The trained neural network model.
-        features (pd.DataFrame or array-like): The feature data for which predictions are to be made.
-
-    Returns:
-        array-like: The predicted target values.
-
-    Prints:
-        - A message indicating that prediction is in progress.
-    """
-    print("\nPredicting target variable...")
-    predictions = model.predict(features)
-    return predictions
-
-
 def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
     """Perform a grid search to find the best combination of hyperparameters.
 
@@ -719,13 +717,23 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
         estMinutes = int((estTimeRemaining % 3600) // 60)
         estSeconds = int(estTimeRemaining % 60)
 
+        estDays = estHours // 24
+        estHours = estHours % 24
+
+        if estDays > 0:
+            estTimeStr = f"{estDays}day{'s' if estDays > 1 else ''} {estHours:02}h{estMinutes:02}min {estSeconds:02}s"
+        else:
+            estTimeStr = f"{estHours:02}h{estMinutes:02}min {estSeconds:02}s"
+
         estFinishTime = pd.Timestamp.now() + pd.Timedelta(seconds=estTimeRemaining)
+        if estTimeRemaining > 86400:  # More than 24 hours
+            estFinishTimeStr = estFinishTime.strftime('%d %b %Y %H:%M')
+        else:
+            estFinishTimeStr = f"{estFinishTime.hour:02}h{estFinishTime.minute:02}"
 
         completion = progressWheelIndex.value / totalGrid
-        estTimeStr = f"{estHours:02}h{estMinutes:02}min {estSeconds:02}s"
-        estFinishTimeStr = f"{estFinishTime.hour:02}h{estFinishTime.minute:02}"
         print(getProgressBar(completion, progressWheelIndex.value) + f"Best Accuracy: {bestAccuracy.value * 100:.2f}%  |  Time remaining: {estTimeStr}  |  est. Finish Time: {estFinishTimeStr}", end='\r')
-        
+
         return valAccuracy, params
 
     results = Parallel(n_jobs=nJobs)(
@@ -737,6 +745,9 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
 
     elapsedTime = searchEndTime - searchStartTime
     print(f"\n\nGrid search completed in {int(elapsedTime.components.hours):02}h {int(elapsedTime.components.minutes):02}min {int(elapsedTime.components.seconds):02}s (average training time: {totalElapsedTime.value / totalGrid:.2f}s)")
+
+    # add the random seed to the best parameters
+    bestParams['randomSeed'] = RANDOM_SEED
 
     print(f"\nBest Accuracy: {bestAccuracy.value * 100:.2f}%")
     print("Best Parameters:")
@@ -753,7 +764,7 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
                 pass
     
     modelId = lastId + 1
-    modelHash = hash(str(bestParams))
+    modelHash = str(hash(str(bestParams)))[:6] # hash the best parameters to get a unique id (6 characters long)
     modelDirectory = f'Models/TrainedModel_{modelHash}_{modelId}/'
     backgroundColor = '#222222'
 
@@ -818,7 +829,7 @@ def runModelTraining():
 
     print()
 
-    tableToDrop =[] # ['AverageHoursWorked']
+    tableToDrop = ['AverageHoursWorked', 'Age']
 
     # Load and preprocess the dataset
     datasetFilePat = r'GeneratedDataSet\ModelDataSet.csv'
@@ -827,14 +838,15 @@ def runModelTraining():
     # Define hyperparameter grid for grid search
     hyperparameterGrid = {
         'layers': [
-            # [features.shape[1], 128, 64, 32, 1],
+            [features.shape[1], 128, 64, 1],
             [features.shape[1], 256, 128, 64, 1],
+            [features.shape[1], 512, 256, 128, 64, 1]
         ],
         'epochs': [100],
         'batchSize': [32],
         'dropoutRate': [0.3],
         'l2_reg': [0.001, 0.01],
-        'learningRate': [0.0005, 0.001],
+        'learningRate': [0.001],
         "metrics": [
             ['Accuracy', 'Recall', 'Precision'],
             ['Accuracy', 'Precision'],
@@ -844,11 +856,11 @@ def runModelTraining():
         'inputActivation': ['relu', 'tanh'],
         'hiddenActivation': ['relu', 'tanh'],
         'outputActivation': ['sigmoid'],
-        'loss': ['binary_crossentropy', 'mean_squared_error'],
-        'optimizer': ['adam']
+        'loss': ['binary_crossentropy'],
+        'optimizer': ['adam', 'rmsprop', 'sgd']
     }
 
-    powerLimitation = 0.5
+    powerLimitation = 1
 
     # Start hyperparameter grid search
     print("\nStarting Grid Search for Hyperparameter Optimization...")
@@ -916,15 +928,21 @@ def runModelTraining():
     print(f"Learning curve saved as '{modelName}.gif'")
 
 
-    # Find feature importance using SHAP values 
-    featuresImportance = findInputImportance(model, features, plotSavePath=modelDirectory)
+    findInputImportanceChoice = True
+    findInputImportanceUserChoice = input("Do you want to find the feature importance using SHAP values? (Y/n): ")
+    if 'n' in findInputImportanceUserChoice.lower():
+        findInputImportanceChoice = False
 
-    # Save the feature importance to a file
-    importanceFilePath = modelDirectory + 'FeatureImportance.csv'
-    
-    featuresImportance = pd.DataFrame(featuresImportance.items(), columns=['Feature', 'Importance'])
-    featuresImportance.to_csv(importanceFilePath, index=False)
-    print(f"Feature importance saved as '{importanceFilePath}'")
+    if findInputImportanceChoice:
+        # Find feature importance using SHAP values 
+        featuresImportance = findInputImportance(model, features, plotSavePath=modelDirectory)
+
+        # Save the feature importance to a file
+        importanceFilePath = modelDirectory + 'FeatureImportance.csv'
+        
+        featuresImportance = pd.DataFrame(featuresImportance.items(), columns=['Feature', 'Importance'])
+        featuresImportance.to_csv(importanceFilePath, index=False)
+        print(f"Feature importance saved as '{importanceFilePath}'")
 
 
     # Return the path where the model was saved
