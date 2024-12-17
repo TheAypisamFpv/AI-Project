@@ -143,11 +143,22 @@ numericalColumns.append('AverageHoursWorked')
 for column in numericalColumns:
     finalData[column] = pd.to_numeric(finalData[column], errors='coerce')
 
+
+def convertToStandardTypes(value):
+    if isinstance(value, (np.integer, np.int64)):
+        return int(value)
+    elif isinstance(value, (np.floating, np.float64)):
+        return float(value)
+    elif isinstance(value, np.ndarray):
+        return value.tolist()
+    else:
+        return value
+
 # Normalize numerical columns
 print("\nNumerical columns min-max values:")
 for column in numericalColumns:
-    maxValue = finalData[column].max()
-    minValue = finalData[column].min()
+    maxValue = convertToStandardTypes(finalData[column].max())
+    minValue = convertToStandardTypes(finalData[column].min())
     print(f"{column} - Min: {minValue}, Max: {maxValue}")
     mappingDict[column] = [minValue, maxValue]
 
