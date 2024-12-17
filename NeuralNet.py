@@ -348,7 +348,7 @@ def findInputImportance(model, features, numSamples=50, shapSampleSize=100, numR
     accumulatedShapValues = pd.DataFrame(0, index=np.arange(shapSampleSize), columns=features.columns)
 
     for run in range(numRuns):
-        print(getProgressBar(run / numRuns, run) + f" Run {run + 1}/{numRuns}", end='\r')
+        print(getProgressBar(run / numRuns, run) + f" Run {run + 1}/{numRuns}")
 
         # Summarize the background data using shap.kmeans
         backgroundData = shap.kmeans(features, numSamples)
@@ -668,35 +668,42 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
 
     def evaluate(params, idx, bestAccuracy, bestParams, valAccuracyHistory):
         trainStartTime = pd.Timestamp.now()
-
-        optimizerName = params['optimizer']
-        if optimizerName == 'adam':
-            optimizer = tf.keras.optimizers.Adam(learning_rate=params['learningRate'])
-        elif optimizerName == 'rmsprop':
-            optimizer = tf.keras.optimizers.RMSprop(learning_rate=params['learningRate'])
-        elif optimizerName == 'sgd':
-            optimizer = tf.keras.optimizers.SGD(learning_rate=params['learningRate'])
-        else:
-            raise ValueError(f"Unknown optimizer: {optimizer}")
         
-        model, history = trainNeuralNet(
-            features=features,
-            target=target,
-            layers=params['layers'],
-            epochs=params['epochs'],
-            batchSize=params['batchSize'],
-            inputActivation=params['inputActivation'],
-            hiddenActivation=params['hiddenActivation'],
-            outputActivation=params['outputActivation'],
-            metrics=params['metrics'],
-            loss=params['loss'],
-            optimizer=optimizer,
-            dropoutRate=params['dropoutRate'],
-            trainingTestingSplit=params['trainingTestingSplit'],
-            l2_reg=params['l2_reg'],
-            verbose=0
-        )        
-        valAccuracy = history.history.get('val_Accuracy', [0])[-1]
+        try:
+
+            optimizerName = params['optimizer']
+            if optimizerName == 'adam':
+                optimizer = tf.keras.optimizers.Adam(learning_rate=params['learningRate'])
+            elif optimizerName == 'rmsprop':
+                optimizer = tf.keras.optimizers.RMSprop(learning_rate=params['learningRate'])
+            elif optimizerName == 'sgd':
+                optimizer = tf.keras.optimizers.SGD(learning_rate=params['learningRate'])
+            else:
+                raise ValueError(f"Unknown optimizer: {optimizer}")
+            
+            model, history = trainNeuralNet(
+                features=features,
+                target=target,
+                layers=params['layers'],
+                epochs=params['epochs'],
+                batchSize=params['batchSize'],
+                inputActivation=params['inputActivation'],
+                hiddenActivation=params['hiddenActivation'],
+                outputActivation=params['outputActivation'],
+                metrics=params['metrics'],
+                loss=params['loss'],
+                optimizer=optimizer,
+                dropoutRate=params['dropoutRate'],
+                trainingTestingSplit=params['trainingTestingSplit'],
+                l2_reg=params['l2_reg'],
+                verbose=0
+            )        
+            valAccuracy = history.history.get('val_Accuracy', [0])[-1]
+            
+        except Exception as e:
+            print(f"-- Error in iteration {idx}: {e} --")
+            valAccuracy = 0.0
+
         valAccuracyHistory.append(valAccuracy)  # Append validation accuracy to history
         if valAccuracy > bestAccuracy.value:
             bestAccuracy.value = valAccuracy
@@ -839,27 +846,28 @@ def runModelTraining():
     # Define hyperparameter grid for grid search
     hyperparameterGrid = {
         'layers': [
-            [features.shape[1], 128, 64, 1],
+            # [features.shape[1], 128, 64, 1],
             [features.shape[1], 256, 128, 64, 1],
-            [features.shape[1], 512, 256, 128, 64, 1]
+            [features.shape[1], 512, 256, 128, 64, 1],
+            # [features.shape[1], 512, 512, 256, 128, 64, 1],
         ],
-        'epochs': [100],
-        'batchSize': [32],
-        'dropoutRate': [0.3],
+        'epochs': [50, 100, 150],
+        'batchSize': [20, 32],
+        'dropoutRate': [0.2, 0.3],
         'l2_reg': [0.001, 0.01],
-        'learningRate': [0.001],
+        'learningRate': [0.001, 0.01],
         "metrics": [
             ['Accuracy', 'Recall', 'Precision'],
-            ['Accuracy', 'Precision'],
-            ['Accuracy', 'Recall'],
-            ['Accuracy'],
+            # ['Accuracy', 'Precision'],
+            # ['Accuracy', 'Recall'],
+            # ['Accuracy'],
         ],
-        'trainingTestingSplit': [0.2, 0.3],
+        'trainingTestingSplit': [0.2, 0.3, 0.4],
         'inputActivation': ['relu', 'tanh'],
         'hiddenActivation': ['relu', 'tanh'],
         'outputActivation': ['sigmoid'],
         'loss': ['binary_crossentropy'],
-        'optimizer': ['adam', 'rmsprop', 'sgd']
+        'optimizer': ['adam']
     }
 
     powerLimitation = 1

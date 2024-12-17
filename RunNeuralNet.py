@@ -219,15 +219,21 @@ class NeuralNetApp:
         with self.predictionLock:
             if self.predictionReady:
                 return
+            
             self.predictionReady = True
-
-        prediction, intermediateOutputs = self.getPrediction()
-        with self.predictionLock:
-            self.prediction = prediction
-            self.intermediateOutputs = intermediateOutputs
-            self.lastPrediction = prediction
-            self.lastIntermediateOutputs = intermediateOutputs
-            self.predictionReady = False
+        
+        try:
+            prediction, intermediateOutputs = self.getPrediction()
+            with self.predictionLock:
+                self.prediction = prediction
+                self.intermediateOutputs = intermediateOutputs
+                self.lastPrediction = prediction
+                self.lastIntermediateOutputs = intermediateOutputs
+                self.predictionReady = False
+        except Exception as e:
+            print(f"Error getting prediction: {e}")
+            with self.predictionLock:
+                self.predictionReady = False    
 
     def getPrediction(self):
         """
