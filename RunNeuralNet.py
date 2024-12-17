@@ -40,6 +40,7 @@ class NeuralNetApp:
         self.MAX_HELP_TEXT_WIDTH = 400  # Maximum width for input help text
         self.INPUT_TEXT_HORIZONTAL_SPACING = 20  # Initial horizontal spacing
         self.INPUT_TEXT_VERTICAL_SPACING = 5    # Initial vertical spacing
+        self.NORMALIZATION_RANGE = (-1, 1)
 
         # FPS setting
         self.fps = 60
@@ -213,8 +214,8 @@ class NeuralNetApp:
                     inputValue = float(inputValue)
                 except ValueError:
                     inputValue = 0
-                normalizedValue = (float(inputValue) - minValue) / (maxValue - minValue) * 2 - 1
-                normalizedValue = max(-1, min(1, normalizedValue))
+                normalizedValue = (float(inputValue) - minValue) / (maxValue - minValue) * (self.NORMALIZATION_RANGE[1] - self.NORMALIZATION_RANGE[0]) + self.NORMALIZATION_RANGE[0]
+                normalizedValue = max(self.NORMALIZATION_RANGE[0], min(self.NORMALIZATION_RANGE[1], normalizedValue))
                 inputData.append(normalizedValue)
                 continue
             
@@ -223,8 +224,8 @@ class NeuralNetApp:
                 inputValue = inputValue.lower()
                 closestMatch = difflib.get_close_matches(inputValue, inputMapping, n=1, cutoff=0.1)
                 if closestMatch:
-                    normalizedValue = (inputMapping.index(closestMatch[0]) / (len(inputMapping) - 1)) * 2 - 1
-                    normalizedValue = max(-1, min(1, normalizedValue))
+                    normalizedValue = (inputMapping.index(closestMatch[0]) / (len(inputMapping) - 1)) * (self.NORMALIZATION_RANGE[1] - self.NORMALIZATION_RANGE[0]) + self.NORMALIZATION_RANGE[0]
+                    normalizedValue = max(self.NORMALIZATION_RANGE[0], min(self.NORMALIZATION_RANGE[1], normalizedValue))
                     inputData.append(normalizedValue)
                     continue
             else:
@@ -399,9 +400,9 @@ class NeuralNetApp:
                 else:
                     adjustedRadius = neuronRadius
 
-                weightAdjustedColor = pygame.Color(color[0], color[1], color[2], int(255 * np.abs(clusterOutput)))
+                # weightAdjustedColor = pygame.Color(color[0], color[1], color[2], int(255 * np.abs(clusterOutput)))
 
-                pygame.draw.circle(screen, weightAdjustedColor, (int(x), int(y)), adjustedRadius)
+                pygame.draw.circle(screen, color, (int(x), int(y)), adjustedRadius)
 
                 # Render neuron output value
                 valueText = f"{clusterOutput:.2f}"

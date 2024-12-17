@@ -53,6 +53,9 @@ mergedData = pd.merge(mergedData, managerSurveyData, on='EmployeeID', how='left'
 mergedData = pd.merge(mergedData, inTime, on='EmployeeID', how='left')
 mergedData = pd.merge(mergedData, outTime, on='EmployeeID', how='left')
 
+# print the first 20 rows of the merged data
+print(mergedData[['TotalWorkingYears']].head(20))
+
 # Step 4: Keep only the required columns
 requiredColumns = [
     'EmployeeID', 'Age', 'Attrition', 'BusinessTravel', 'Department', 'DistanceFromHome',
@@ -133,33 +136,42 @@ averageHoursWorked.name = 'AverageHoursWorked'
 # Merge average hours worked with the final dataset
 finalData = pd.merge(finalData, averageHoursWorked, left_on='EmployeeID', right_index=True, how='left')
 
+
 # Add 'AverageHoursWorked' to numerical columns
 numericalColumns.append('AverageHoursWorked')
 
-# Normalize numerical columns with padding for large values
+for column in numericalColumns:
+    finalData[column] = pd.to_numeric(finalData[column], errors='coerce')
+
+
+def convertToStandardTypes(value):
+    if isinstance(value, (np.integer, np.int64)):
+        return int(value)
+    elif isinstance(value, (np.floating, np.float64)):
+        return float(value)
+    elif isinstance(value, np.ndarray):
+        return value.tolist()
+    else:
+        return value
+
+# Normalize numerical columns
 print("\nNumerical columns min-max values:")
 for column in numericalColumns:
-    if finalData[column].dtype in [np.float64, np.int64] and finalData[column].max() > 5:  # Apply padding only for large values
-        maxValue = ceil(finalData[column].max() * 1.2)
-        minValue = int(finalData[column].min())
-        print(f"{column} - Min: {minValue}, Max: {maxValue}")
-        finalData[column] = finalData[column] / maxValue
-    else:
-        maxValue = int(finalData[column].max())
-        minValue = int(finalData[column].min())
-        print(f"{column} - Min: {minValue}, Max: {maxValue}")
-        
+    maxValue = convertToStandardTypes(finalData[column].max())
+    minValue = convertToStandardTypes(finalData[column].min())
+    print(f"{column} - Min: {minValue}, Max: {maxValue}")
     mappingDict[column] = [minValue, maxValue]
 
+# Apply MinMaxScaler to numerical columns
 scaler = MinMaxScaler(feature_range=normalizationRange)
 finalData[numericalColumns] = scaler.fit_transform(finalData[numericalColumns])
 
 # Reorder mappingDict to match the order of columns in finalData
-ordered_mapping_dict = {column: mappingDict[column] for column in finalData.columns if column in mappingDict}
+orderedMappingDict = {column: mappingDict[column] for column in finalData.columns if column in mappingDict}
 
 # Save mapping values to a CSV file
-mapping_df = pd.DataFrame([ordered_mapping_dict])
-mapping_df.to_csv(modelDataSetsPath + 'MappingValues.csv', index=False)
+mappingDf = pd.DataFrame([orderedMappingDict])
+mappingDf.to_csv(modelDataSetsPath + 'MappingValues.csv', index=False)
 
 # Final check for any missing data (and remove the row where 'AverageHoursWorked' is missing)
 print("\nFinal check for missing data...")

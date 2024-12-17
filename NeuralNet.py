@@ -95,11 +95,11 @@ def loadAndPreprocessData(filePath:str, specifiedColumnsToDrop:list = []):
     data = data.drop('EmployeeID', axis=1)
 
     # Drop specified columns
+    print("Dropping columns :")
     for column in specifiedColumnsToDrop:
-        print("Dropping columns :")
         if column in data.columns:
             data = data.drop(column, axis=1)
-            print(f"\t-{column}")
+            print(f"\t- {column}")
 
     print()
 
@@ -239,8 +239,9 @@ def trainNeuralNet(
 
     # Compute class weights to handle class imbalance
     classes = np.unique(trainingLabels)
-    class_weights = compute_class_weight(class_weight='balanced', classes=classes, y=trainingLabels)
-    classWeights = {cls: weight for cls, weight in zip(classes, class_weights)}
+    classWeights = compute_class_weight(class_weight='balanced', classes=classes, y=trainingLabels)
+    classWeights = {cls: weight for cls, weight in zip(classes, classWeights)}
+    
     if verbose: print(f"Computed class weights: {classWeights}")
 
     # Build the neural network model
@@ -852,7 +853,7 @@ def runModelTraining():
             ['Accuracy', 'Precision'],
             ['Accuracy', 'Recall'],
             ['Accuracy'],
-            ],
+        ],
         'inputActivation': ['relu', 'tanh'],
         'hiddenActivation': ['relu', 'tanh'],
         'outputActivation': ['sigmoid'],
