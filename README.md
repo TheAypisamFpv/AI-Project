@@ -1,47 +1,38 @@
-# AI Project
-### Big Picture
-- sanitize dataset
-- seperate dataset into training and testing
-- train model on training dataset
-- test model on testing dataset
-- visualize/validation model
----
-### Model
-- Linear Regression
----
-### Model Visualization
-- Each point on the map is a house, with the color representing the difference between the predicted price and the actual price.
-- The color is on a scale from a red to a green.
-- The scale for the color is normalized and used in this function: 
+# Employee Attrition Prediction
 
-![f(x) = \frac{10^x}{10} \cdot x](https://latex.codecogs.com/png.latex?\color{white}f(x)%20=%20\frac{10^x}{10}%20\cdot%20x)
-
-- Then animated over time to show the progression of the model.
-
+This project aims to predict employee attrition using various regression models. The dataset includes employee information, survey data, and in/out time records. The project involves data preprocessing, model training, and evaluation.
 
 ## Requirements
-### Python 3.11.x - 3.12.x
 
-Python can be downloaded from the official website: https://www.python.org/downloads/
-
-- Create a virtual environment using the installed python version
-- Install the required packages using the following command:
-
-```bash
-pip install -r requirements.txt
+The required Python packages are listed in the `requirements.txt` file. You can install them using:
+```sh
+pip install -r
 ```
 
+## Data Preprocessing
 
-# Neural Network
-### Best models as of now:
-#### With `AverageHoursWorked` (Accuracy:0.95):
+The data preprocessing script DataPreprocessing.py performs the following steps:
 
-`TrainedModel_[25, 512, 256, 128, 1]_100_32_0.3_0.001_relu_relu_sigmoid_Accuracy_mean_squared_error_Adam(0.0005)_0.2`
+1. Load datasets from the DataSets/ directory.
+2. Remove leading/trailing whitespaces from values and column names.
+3. Replace 'NA' values with np.nan.
+4. Merge datasets on EmployeeID.
+5. Keep only the required columns.
+6. Remove rows with missing data.
+7. Identify numerical and non-numerical columns.
+8. Normalize non-numerical columns.
+9. Calculate average hours worked per day for each employee.
+10. Normalize numerical columns.
+11. Save the preprocessed data to GeneratedDataSet/ModelDataSet.csv.
 
+## Model Training and Evaluation
 
-#### Without `AverageHoursWorked` (Accuracy:0.93):
+The LinearRegression.py script performs the following steps:
 
-`TrainedModel_[24, 256, 128, 64, 1]_100_20_0.3_0.001_relu_tanh_sigmoid_Accuracy_mean_squared_error_Adam(0.001)_0.2`
-
-
-can be found in the `models` directory in the folder of the same name.
+1. Load the preprocessed data from GeneratedDataSet/ModelDataSet.csv.
+2. Split the data into training and test sets.
+3. Define parameter grids for various regression models (Linear Regression, Ridge, Lasso, ElasticNet).
+4. Run grid search to find the best model and parameters.
+5. Evaluate the best model using Mean Squared Error (MSE), R² score, and Mean Absolute Error (MAE).
+6. Save the regression coefficients to regression_coefficients.csv.
+7. Visualize the predictions vs. actual values
