@@ -47,18 +47,21 @@ grid = GridSearchCV(model, param_grid, cv=5, scoring='roc_auc', n_jobs=-1)
 grid.fit(X_train, y_train)
 
 # print best params
-print(grid.best_params_)
-print(grid.best_score_)
-print(grid.best_estimator_)
+print("Best hyperparameters",grid.best_params_)
+print("Best score attained",grid.best_score_)
+print("Best model",grid.best_estimator_)
 
 # print accuracy
 print(grid.score(X_test, y_test))
+
+# get best model
+best_model = grid.best_estimator_
 
 from sklearn.metrics import confusion_matrix, ConfusionMatrixDisplay
 import matplotlib.pyplot as plt
 
 # Predict on the test set
-y_pred = grid.best_estimator_.predict(X_test)
+y_pred = best_model.predict(X_test)
 
 # Generate the confusion matrix
 cm = confusion_matrix(y_test, y_pred)
@@ -70,6 +73,50 @@ disp.plot(cmap=plt.cm.Blues)
 # Add title and labels
 plt.title("Confusion Matrix")
 plt.show()
+plt.savefig('Plots/LogisticRegressionCM.png')
+
+
+# print classification report
+from sklearn.metrics import classification_report
+print("Classification Report")
+print(classification_report(y_test, y_pred))
+
+from sklearn.metrics import RocCurveDisplay
+import matplotlib.pyplot as plt
+
+# Assuming you have a trained model and test data
+y_proba = grid.best_estimator_.predict_proba(X_test)[:, 1]  # Probabilities for the positive class
+RocCurveDisplay.from_predictions(y_test, y_proba)
+
+# Add title and labels
+plt.title("ROC Curve")
+plt.show()
+ # save plot as image
+plt.savefig('Plots/LogisticRegressionROC.png')
+
+# Visualize features influencing the model
+# Get feature coefficients
+feature_coefficients = best_model.coef_[0]  # Logistic Regression has a 2D coef_ array
+feature_names = X_train.columns
+
+# Create a DataFrame to display coefficients
+coef_df = pd.DataFrame({
+    "Feature": feature_names,
+    "Coefficient": feature_coefficients
+}).sort_values(by="Coefficient", ascending=False)
+
+# Display the coefficients
+print("Feature coefficients")
+print(coef_df)
+
+# Plot the feature coefficients
+plt.figure(figsize=(10, 10))
+plt.barh(coef_df["Feature"], coef_df["Coefficient"])
+plt.xlabel("Coefficient Value")
+plt.ylabel("Feature")
+plt.title("Feature Importance")
+plt.show()
+
 
 # save model
 import joblib
