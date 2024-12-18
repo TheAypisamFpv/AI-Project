@@ -150,7 +150,7 @@ plt.xlim([test_labels.min(), test_labels.max()])
 plt.ylim([test_labels.min(), test_labels.max()])
 plt.show(block=False)
 
-# Scatter plot of actual vs predicted values
+# Scatter plot des valeurs réelles et prédites
 plt.figure(figsize=(10, 6))
 plt.scatter(test_labels, y_pred, alpha=0.5)
 plt.plot([test_labels.min(), test_labels.max()], [test_labels.min(), test_labels.max()], 'k--', lw=2)
@@ -159,7 +159,7 @@ plt.ylabel('Predicted')
 plt.title('Actual vs Predicted')
 plt.show(block=False)
 
-# Residual plot
+# Graphique des "résidus" : évaluer la qualité du modèle de régression
 plt.figure(figsize=(10, 6))
 plt.scatter(y_pred, errors, alpha=0.5)
 plt.axhline(y=0, color='r', linestyle='--')
@@ -168,7 +168,7 @@ plt.ylabel('Residuals')
 plt.title('Residuals vs Predicted')
 plt.show(block=False)
 
-# Coefficient plot
+# Coefficient plot pour visualiser l'importance des caractéristiques
 plt.figure(figsize=(10, 6))
 coefficients['AbsoluteCoefficient'] = coefficients['Coefficient'].abs()
 coefficients = coefficients.sort_values(by='AbsoluteCoefficient', ascending=False)
