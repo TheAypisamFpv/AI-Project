@@ -91,3 +91,19 @@ The `Models\` directory contains the following files for each trained model (eac
 - `MappingValues.csv`: The mapping values used during preprocessing.
 - `FeatureImportance.csv`: The feature importance values calculated using SHAP.
 - `ValidationAccuracyHistory.png`: A plot showing the validation accuracy history during grid search.
+
+
+
+## Bibliography
+### Documentations
+- TensorFlow Documentation: https://www.tensorflow.org/guide
+- Scikit-learn Documentation: https://scikit-learn.org/stable/documentation.html
+- SHAP Documentation: https://shap.readthedocs.io/en/latest/
+
+### Youtube Videos:
+-  [Neural networks](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) from 3Blue1Brown (video 1 to 4)
+- [How to Create a Neural Network (and Train it to Identify Doodles)](https://www.youtube.com/watch?v=hfMk-kjRv4c) from Sebastian Lague
+- [How to train simple AIs](https://www.youtube.com/watch?v=EvV5Qtp_fYg) from Pezzza's Work
+
+### AIs:
+- Github Copilot

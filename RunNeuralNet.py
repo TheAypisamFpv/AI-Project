@@ -23,6 +23,7 @@ class NeuralNetApp:
         self.TEXT_COLOR = pygame.Color("#DDDDDD")
         self.BACKGROUND_COLOR = pygame.Color("#222222")
         self.INPUT_BACKGROUND_COLOR = pygame.Color("#333333")
+        self.DROP_DOWN_BACKGROUND_COLOR = pygame.Color("#444444")
         self.HOVER_COLOR = pygame.Color("#AAAAAA")
         self.ACTIVE_COLOR = pygame.Color("#555555")  # Changed ACTIVE_COLOR for better visibility
         
@@ -33,6 +34,7 @@ class NeuralNetApp:
         self.INPUT_BOX_BOTTOM_MARGIN = 10
         self.INPUT_BOX_WIDTH = 140
         self.INPUT_BOX_HEIGHT = 20
+        self.borderRadius = 10
         
         # Minimum window size
         self.MIN_WIDTH = 1000
@@ -67,6 +69,8 @@ class NeuralNetApp:
         self.inputValues = {}
         self.cursorVisible = True
         self.cursorTimer = 0
+        self.dropdownOpen = None  # Track which dropdown is open
+        self.dropdownOptions = {}  # Store dropdown options for each feature
         self.running = True
         self.prediction = None
         self.intermediateOutputs = None
@@ -74,6 +78,7 @@ class NeuralNetApp:
         self.activeFeature = None
         self.modelFilePath = None
         self.model = None
+        self.newModel = False
         self.mapping = None
         self.featuresImportance = None
         self.lastInputValues = None
@@ -110,6 +115,23 @@ class NeuralNetApp:
         self.MIN_CONNECTION_WIDTH = 1
         self.MAX_CONNECTION_WIDTH = 10
 
+    def renderDropdown(self, feature, inputBox, options):
+        """
+        Render a dropdown list for the given feature.
+        """
+        dropdownRect = pygame.Rect(inputBox.x, inputBox.y + self.INPUT_BOX_HEIGHT, self.INPUT_BOX_WIDTH, len(options) * self.INPUT_BOX_HEIGHT)
+        pygame.draw.rect(self.screen, self.DROP_DOWN_BACKGROUND_COLOR, dropdownRect, border_radius=self.borderRadius)
+        mousePos = pygame.mouse.get_pos()
+        for i, option in enumerate(options):
+            optionRect = pygame.Rect(inputBox.x, inputBox.y + self.INPUT_BOX_HEIGHT + i * self.INPUT_BOX_HEIGHT, self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT)
+            if optionRect.collidepoint(mousePos):
+                pygame.draw.rect(self.screen, self.HOVER_COLOR, optionRect, border_radius=self.borderRadius)
+            else:
+                pygame.draw.rect(self.screen, self.DROP_DOWN_BACKGROUND_COLOR, optionRect, border_radius=self.borderRadius)
+            
+            optionText = self.font.render(option, True, self.TEXT_COLOR)
+            self.screen.blit(optionText, (optionRect.x + 5, optionRect.y + 5))
+
     def isFloat(self, value):
         """Check if the string can be converted to a float."""
         try:
@@ -131,6 +153,7 @@ class NeuralNetApp:
         mappingFilePath = directory + r"MappingValues.csv"
         paramsFilePath = directory + modelName + '.params'
         print(f"\nLoading model parameters from {paramsFilePath}...")
+        seed = 42
         if not os.path.exists(paramsFilePath):
             print(f"No .params file found at {paramsFilePath}, using default random seed (42)")
         else:  
@@ -138,15 +161,16 @@ class NeuralNetApp:
             with open(paramsFilePath, 'r') as file:
                 params = json.load(file)
                 if not 'randomSeed' in params:
-                    print(f"No random seed found in {paramsFilePath}, using default seed (42)")
+                    print(f"No random seed found in {paramsFilePath}, using default seed ({seed})")
                 try:
-                    dnn.RANDOM_SEED = int(params['randomSeed'])
-                    np.random.seed(int(params['randomSeed']))
-                    tf.random.set_seed(int(params['randomSeed']))
-                    print(f"Loaded random seed from {paramsFilePath}")
-                except ValueError:
-                    print(f"Invalid random seed in {paramsFilePath}, using default seed (42)")
-
+                    seed = int(params['randomSeed'])
+                    print("Setting random seed to", seed)
+                except:
+                    print(f"Invalid random seed in {paramsFilePath}, using default seed ({seed})")
+        
+        dnn.RANDOM_SEED = seed
+        np.random.seed(seed)
+        tf.random.set_seed(seed)
                         
                         
         print("\nChecking for mapping values...")
@@ -171,6 +195,10 @@ class NeuralNetApp:
                     value = eval(value)
                 mapping[header] = value
 
+        # check if the length of the mapping values is the same as the input shape of the model
+        if len(mapping) != self.model.input_shape[1]:
+            raise ValueError(f"Length of mapping values ({len(mapping)}) does not match input shape of the model's input layer ({self.model.input_shape[1]})")
+
         self.mapping = mapping
         print(f"Loaded mapping values from {mappingFilePath}\n")
 
@@ -183,6 +211,10 @@ class NeuralNetApp:
         else:
             self.featuresImportance = {feature: 1 for feature in self.mapping.keys()}
             print("Feature importance file not found, using default neuron size\n")
+
+        # Clear existing input boxes and values
+        self.inputBoxes = []
+        self.inputValues = {}
     
 
     def selectModelFile(self):
@@ -249,7 +281,7 @@ class NeuralNetApp:
         Parse input values and get a prediction from the model.
         """
         inputData = []
-        print(time.time() - self.lastInputChangeTime) # DEBUG
+        # print(time.time() - self.lastInputChangeTime) # DEBUG
         lastInputChangeTime = time.time() - self.lastInputChangeTime
 
         if self.lastInputValues != self.inputValues and self.lastInputValues:
@@ -437,7 +469,7 @@ class NeuralNetApp:
                     weight = np.mean([currentWeights[j, k] for j in currentCluster for k in nextCluster])
                     
                     # Adjust alpha channel based on weight
-                    alphaFactor = (np.abs(weight) - minWeight) / weightRange
+                    alphaFactor = (np.abs(weight) - minWeight) / weightRange                        
                     blendedColor = self.interpolateColor(color, self.BACKGROUND_COLOR, 1 - alphaFactor)
                     
                     connections.append((weight, (x, y, nextX, nextY, blendedColor)))
@@ -459,21 +491,35 @@ class NeuralNetApp:
     
         # Second pass: Draw all neurons and their values
         for i in range(len(layers)):
-            layerSize = layers[i]
             x = startWidth + i * layerSpacing
-            neuronSpacing = availableHeight / layerSize
-            totalLayerHeight = (layerSize - 1) * neuronSpacing
-            yStart = startHeight + (availableHeight - totalLayerHeight) / 2
-    
+            
             # Cluster neurons in the current layer
             clusters = self.clusterNeurons(allOutputs[i])
-    
-            for cluster in clusters:
+            numClusters = len(clusters)
+            
+            # Recalculate neuronSpacing using the number of clusters
+            neuronSpacing = availableHeight / numClusters
+            totalLayerHeight = (numClusters - 1) * neuronSpacing
+            yStart = startHeight + (availableHeight - totalLayerHeight) / 2
+
+            # Define variables for circle sizes and edge thickness
+            blackCircleSize = 1.0  # This will be multiplied by the adjustedRadius
+            edgeThickness = 1
+
+            for clusterIndex, cluster in enumerate(clusters):
                 clusterOutput = np.mean([allOutputs[i][0][j] for j in cluster])
-                # normalize the output to [0, 1] using the NORMALIZATION_RANGE
-                normalizedOutput = (clusterOutput - self.NORMALIZATION_RANGE[0]) / (self.NORMALIZATION_RANGE[1] - self.NORMALIZATION_RANGE[0])
+                
+                # Determine normalization range based on layer
+                if i == 0:
+                    # Input layer normalization range
+                    normalizedOutput = (clusterOutput + 1) / 2  # Normalize from [-1, 1] to [0, 1]
+                else:
+                    # Other layers normalization range
+                    normalizedOutput = clusterOutput  # Already in [0, 1]
+                
+                normalizedOutput = max(0, min(1, normalizedOutput))  # Clamp to [0, 1]
                 color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
-                y = yStart + np.mean([j * neuronSpacing for j in cluster])
+                y = yStart + clusterIndex * neuronSpacing
                 
                 # Adjust neuron radius based on importance for input layer
                 if i == 0:
@@ -482,19 +528,30 @@ class NeuralNetApp:
                     adjustedRadius = int(normalizeImportance(importance))
                 else:
                     adjustedRadius = neuronRadius
-    
-                pygame.draw.circle(screen, color, (int(x), int(y)), adjustedRadius)
-    
+
+                # Draw black filled circle with white edge
+                pygame.draw.circle(screen, (0, 0, 0), (int(x), int(y)), int(adjustedRadius * blackCircleSize))
+                pygame.draw.circle(screen, (255, 255, 255), (int(x), int(y)), int(adjustedRadius * blackCircleSize) + edgeThickness, edgeThickness)
+
+                # Adjust inner circle size based on normalized output
+                if normalizedOutput <= 0.5:
+                    innerRadius = int(adjustedRadius * (1 - 2 * normalizedOutput))
+                else:
+                    innerRadius = int(adjustedRadius * (2 * (normalizedOutput - 0.5)))
+
+                # Draw inner circle based on neuron value
+                pygame.draw.circle(screen, color, (int(x), int(y)), innerRadius)
+
                 # Render neuron output value
-                valueText = f"{clusterOutput:.2f}"
-                textSurface = self.font.render(valueText, True, self.TEXT_COLOR)
-                textRect = textSurface.get_rect(center=(int(x), int(y)))
-                screen.blit(textSurface, textRect)
-    
-        # Reset clipping area
-        self.screen.set_clip(None)
-    
-        print(f"Visualization took {time.time() - timeStart:.2f} seconds")
+                # valueText = f"{clusterOutput:.2f}"
+                # textSurface = self.font.render(valueText, True, self.TEXT_COLOR)
+                # textRect = textSurface.get_rect(center=(int(x), int(y)))
+                # screen.blit(textSurface, textRect)
+
+            # Reset clipping area
+            self.screen.set_clip(None)
+
+            print(f"Visualization took {time.time() - timeStart:.2f} seconds")
 
     def clearVisualizationArea(self):
         """
@@ -623,32 +680,72 @@ class NeuralNetApp:
 
                     self.clearVisualizationArea()
                     self.lastInputValues = None
+                    self.lastInputChangeTime = time.time() - self.waitTime
                     
                     # Update input box vertical positions based on new window height
                     if self.modelFilePath:
                         self.updateInputBoxes()
                 
                 elif event.type == pygame.MOUSEBUTTONDOWN:
-                    # Handle mouse clicks
-                    if self.modelFilePath is None:
-                        # If no model is selected, check if "Select Model" button is clicked
+                    # Check if "Select Model" button is clicked
+                    try:
                         if hasattr(self, 'selectModelButton') and self.selectModelButton.collidepoint(event.pos):
                             self.modelFilePath = self.selectModelFile()
                             if self.modelFilePath:
+                                self.newModel = True
                                 self.model = dnn.loadModel(self.modelFilePath)
                                 self.loadModelParams()
                                 self.updateInputBoxes()
+                    
+                    except Exception as e:
+                        print(f"Error selecting model: {e}")
+                        self.clearVisualizationArea()
+                        errorFont = pygame.font.Font(None, 20)
+                        errorMessage = f"Error selecting model: {e}"
+                        maxWidth = self.screen.get_width() - self.leftMargin - self.rightMargin
+                        wrappedErrorText = self.wrapText(errorMessage, errorFont, maxWidth)
+                        for lineIndex, line in enumerate(wrappedErrorText):
+                            errorText = errorFont.render(line, True, self.NEGATIVE_COLOR)
+                            self.screen.blit(errorText, (self.leftMargin, self.topMargin + lineIndex * (errorFont.get_height() + 5)))
+                        self.modelFilePath = None
+                            
                     else:
                         # If model is loaded, check if any input box is clicked
-                        for feature, inputBox, values in self.inputBoxes:
-                            if inputBox.collidepoint(event.pos):
-                                self.activeBox = inputBox
-                                self.activeFeature = feature
-                                self.cursorTimer = 0
+                        dropdownClicked = False
+                        if self.dropdownOpen:
+                            for feature, inputBox, values in self.inputBoxes:
+                                if self.dropdownOpen == feature:
+                                    options = self.mapping[feature]
+                                    for i, option in enumerate(options):
+                                        optionRect = pygame.Rect(inputBox.x, inputBox.y + self.INPUT_BOX_HEIGHT + i * self.INPUT_BOX_HEIGHT, self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT)
+                                        if optionRect.collidepoint(event.pos):
+                                            self.inputValues[feature] = option
+                                            self.dropdownOpen = None
+                                            dropdownClicked = True
+                                            break
+                                if dropdownClicked:
+                                    break
+
+                        if not dropdownClicked:
+                            inputBoxClicked = False
+                            for feature, inputBox, values in self.inputBoxes:
+                                if inputBox.collidepoint(event.pos):
+                                    self.activeBox = inputBox
+                                    self.activeFeature = feature
+                                    self.cursorTimer = 0
+                                    if isinstance(values[0], str):
+                                        self.dropdownOpen = feature if self.dropdownOpen != feature else None
+                                    else:
+                                        self.dropdownOpen = None
+                                    inputBoxClicked = True
+                                    break
+                            if not inputBoxClicked:
+                                self.activeBox = None
+                                self.dropdownOpen = None
                 
                 elif event.type == pygame.KEYDOWN:
-                # Handle keyboard input for active input box
-                    if self.activeBox:
+                    # Handle keyboard input for active input box
+                    if self.activeBox and self.dropdownOpen is None:
                         if event.key == pygame.K_RETURN:
                             self.activeBox = None
                         elif event.key == pygame.K_BACKSPACE:
@@ -676,56 +773,49 @@ class NeuralNetApp:
                                 self.cursorTimer = 0
                         else:
                             self.inputValues[self.activeFeature] += event.unicode
+
+                
     
             if self.modelFilePath:
                 # Draw input fields
+                mousePos = pygame.mouse.get_pos()
                 for feature, inputBox, values in self.inputBoxes:
                     # Determine background color based on active state
                     boxBackgroundColor = self.ACTIVE_COLOR if inputBox == self.activeBox and windowFocused else self.INPUT_BACKGROUND_COLOR
-    
-                    # Calculate help text
-                    wrappedText = self.wrapText(f"{feature}: {values}", self.font, self.MAX_HELP_TEXT_WIDTH)
-                    totalTextHeight = len(wrappedText) * self.FONT_SIZE + (len(wrappedText) - 1) * (self.INPUT_TEXT_VERTICAL_SPACING * 0.3)  # Reduced spacing between lines
-                    startY = inputBox.y + (self.INPUT_BOX_HEIGHT - totalTextHeight) / 2
-    
-                    # Calculate help text bounding box with right padding
-                    helpTextX = inputBox.x + self.INPUT_BOX_WIDTH + self.INPUT_TEXT_HORIZONTAL_SPACING
-                    helpTextY = startY
-                    helpTextWidth = self.font.size(max(wrappedText, key=len))[0]
-                    helpTextHeight = totalTextHeight
-    
-                    # Define the overall bounding rectangle with right padding
-                    boundingRect = pygame.Rect(
-                        inputBox.x - 2,  # Slight padding on the left
-                        min(inputBox.y, helpTextY) - 2,  # Slight padding on the top
-                        self.INPUT_BOX_WIDTH + self.INPUT_TEXT_HORIZONTAL_SPACING + helpTextWidth + 14,  # Increased width for right padding
-                        max(self.INPUT_BOX_HEIGHT, helpTextHeight) + 4  # Height with padding
-                    )
-    
-                    # Draw the overall contour around input box and help text
-                    pygame.draw.rect(self.screen, self.TEXT_COLOR, boundingRect, 1)  # Single contour with width 1
-    
+
+                    # if the mouse is hovering over the input box and input box not active, change the color
+                    if inputBox.collidepoint(mousePos) and self.activeBox != inputBox and not self.dropdownOpen:
+                        boxBackgroundColor = self.HOVER_COLOR
+
                     # Draw input box with dynamic background color
-                    pygame.draw.rect(self.screen, boxBackgroundColor, inputBox, 0)  # Filled input box with dynamic background
-    
+                    pygame.draw.rect(self.screen, boxBackgroundColor, inputBox, 0, border_radius=self.borderRadius)  # Filled input box with dynamic background
+
                     # Render input text
                     textSurface = self.font.render(str(self.inputValues[feature]), True, self.TEXT_COLOR)
                     self.screen.blit(textSurface, (inputBox.x + 5, inputBox.y + 5))
-    
+
                     # Draw cursor
                     if inputBox == self.activeBox and self.cursorVisible:
                         self.cursor.topleft = (inputBox.x + 5 + textSurface.get_width(), inputBox.y + 5)
-                        pygame.draw.rect(self.screen, self.TEXT_COLOR, self.cursor)  # Cursor should contrast with dark background
-    
+                        pygame.draw.rect(self.screen, self.TEXT_COLOR, self.cursor, border_radius=self.borderRadius)  # Cursor should contrast with dark background
+
                     # Render help text
-                    for j, line in enumerate(wrappedText):
-                        labelSurface = self.font.render(line, True, self.TEXT_COLOR)
-                        labelPos = (
-                            helpTextX, 
-                            helpTextY + j * (self.FONT_SIZE + self.INPUT_TEXT_VERTICAL_SPACING * 0.3)  # Reduced spacing between lines
-                        )
-                        self.screen.blit(labelSurface, labelPos)
-    
+                    helpTextMiddleY = inputBox.y + self.INPUT_BOX_HEIGHT / 2
+                    helpText = feature
+                    # check if the feature want a numeric value, if so, add the range to the help text
+                    if isinstance(values[0], (int, float)):
+                        helpText += f" ({values[0]} - {values[1]})"
+                    
+                    labelSurface = self.font.render(helpText, True, self.TEXT_COLOR)
+                    labelPos = (inputBox.x + self.INPUT_BOX_WIDTH + self.INPUT_TEXT_HORIZONTAL_SPACING, helpTextMiddleY - self.FONT_SIZE / 2 + 4)
+                    self.screen.blit(labelSurface, labelPos)
+
+                    
+                if self.dropdownOpen:
+                    for feature, inputBox, values in self.inputBoxes:
+                        if self.dropdownOpen == feature:
+                            self.renderDropdown(feature, inputBox, values)
+
                 # Automatically get prediction
                 inputData = [float(value) if self.isFloat(value) else np.nan for value in self.inputValues.values()]
                 inputData = np.array([inputData])
@@ -735,14 +825,14 @@ class NeuralNetApp:
                         self.predictionThread.start()
     
                 prediction = None
-                with self.predictionLock:
+                with self.predictionLock or self.newModel:
                     if self.prediction:
                         self.clearVisualizationArea()
                         prediction = self.prediction
                         intermediateOutputs = self.intermediateOutputs
                         self.prediction = None
                         self.intermediateOutputs = None
-                        
+
                         if visualisation:
                             self.visualizeNeurons(self.screen, self.model, intermediateOutputs)
 
@@ -751,12 +841,12 @@ class NeuralNetApp:
                     predictionConfidence = prediction[0][0] * 2 - 1
                     predictionText = "YES" if predictionConfidence > 0 else "NO"
                     predictionColor = self.interpolateColor(self.POSITIVE_COLOR, self.NEGATIVE_COLOR, prediction[0][0])
-                    
+
                     # [-1, 0, 1] -> [100, 0, 100]
                     predictionConfidence = abs(predictionConfidence) * 100
                     predictionFont = pygame.font.Font(None, 25)
                     predictionSurface = predictionFont.render(f"{predictionText} ({predictionConfidence:.2f}%)", True, predictionColor)
-    
+
                     predictionY = 100
                     predictionX = self.screen.get_width() - self.rightMargin - predictionSurface.get_width() - 10
                     self.screen.blit(predictionSurface, (predictionX, predictionY))
@@ -767,13 +857,12 @@ class NeuralNetApp:
                         visualisationTextPos = (self.leftMargin, self.topMargin - 5)
                         self.screen.blit(visualisationText, visualisationTextPos)
     
-            # Draw "Select Model" button only if no model is selected
-            if not self.modelFilePath:
-                self.selectModelButton = pygame.Rect(10, 30 * len(self.inputBoxes) + 60, self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT)
-                color = self.HOVER_COLOR if self.selectModelButton.collidepoint(pygame.mouse.get_pos()) else self.TEXT_COLOR
-                pygame.draw.rect(self.screen, color, self.selectModelButton, 2)
-                selectModelText = self.font.render("Select Model", True, color)
-                self.screen.blit(selectModelText, (self.selectModelButton.x + 5, self.selectModelButton.y + 5))
+            # Draw "Select Model" button
+            self.selectModelButton = pygame.Rect(10, 5, self.INPUT_BOX_WIDTH, self.INPUT_BOX_HEIGHT)
+            color = self.HOVER_COLOR if self.selectModelButton.collidepoint(pygame.mouse.get_pos()) else self.TEXT_COLOR
+            pygame.draw.rect(self.screen, color, self.selectModelButton, 2, border_radius=self.borderRadius)
+            selectModelText = self.font.render("Select Model", True, color)
+            self.screen.blit(selectModelText, (self.selectModelButton.x + 5, self.selectModelButton.y + 5))
     
            
             
