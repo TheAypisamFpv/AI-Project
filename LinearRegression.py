@@ -1,6 +1,6 @@
 from sklearn.model_selection import ParameterGrid, train_test_split, cross_val_score
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, accuracy_score, precision_score, recall_score, f1_score
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -38,6 +38,9 @@ def runGridSearch(models_param_grids, X_train, y_train):
 
 data = pd.read_csv(r"GeneratedDataSet\ModelDataSet.csv")
 data.columns = data.columns.str.strip().str.replace(' ', '').str.lower()
+
+# Exclure "Employee ID" des paramètres à étudier
+data = data.drop(columns=['employeeid'])
 
 # predire 'target' en fonction des 'features'
 data_to_predict = "attrition"
@@ -86,14 +89,24 @@ models_param_grids = {
 best_model = runGridSearch(models_param_grids, Training_data, train_labels)
 
 y_pred = best_model.predict(Test_data)
+y_pred_binary = np.round(y_pred)  # Convertir les prédictions en valeurs binaires (0 ou 1)
+
 mse = mean_squared_error(test_labels, y_pred)
 r2 = r2_score(test_labels, y_pred)
 mae = mean_absolute_error(test_labels, y_pred)
+accuracy = accuracy_score(test_labels, y_pred_binary)
+precision = precision_score(test_labels, y_pred_binary)
+recall = recall_score(test_labels, y_pred_binary)
+f1 = f1_score(test_labels, y_pred_binary)
 
 print("\n=== Résultats de la régression linéaire ===")
 print(f"Erreur quadratique moyenne (MSE) : {mse:.2f}")
 print(f"Coefficient de détermination (R²) : {r2:.2f}")
 print(f"Erreur absolue moyenne (MAE) : {mae:.2f}")
+print(f"Accuracy : {accuracy:.2f}")
+print(f"Precision : {precision:.2f}")
+print(f"Recall : {recall:.2f}")
+print(f"F1 Score : {f1:.2f}")
 
 coefficients = pd.DataFrame({
     'Feature': Input_features.columns,
@@ -135,4 +148,32 @@ plt.legend()
 plt.axis('equal')
 plt.xlim([test_labels.min(), test_labels.max()])
 plt.ylim([test_labels.min(), test_labels.max()])
+plt.show(block=False)
+
+# Scatter plot of actual vs predicted values
+plt.figure(figsize=(10, 6))
+plt.scatter(test_labels, y_pred, alpha=0.5)
+plt.plot([test_labels.min(), test_labels.max()], [test_labels.min(), test_labels.max()], 'k--', lw=2)
+plt.xlabel('Actual')
+plt.ylabel('Predicted')
+plt.title('Actual vs Predicted')
+plt.show(block=False)
+
+# Residual plot
+plt.figure(figsize=(10, 6))
+plt.scatter(y_pred, errors, alpha=0.5)
+plt.axhline(y=0, color='r', linestyle='--')
+plt.xlabel('Predicted')
+plt.ylabel('Residuals')
+plt.title('Residuals vs Predicted')
+plt.show(block=False)
+
+# Coefficient plot
+plt.figure(figsize=(10, 6))
+coefficients['AbsoluteCoefficient'] = coefficients['Coefficient'].abs()
+coefficients = coefficients.sort_values(by='AbsoluteCoefficient', ascending=False)
+plt.barh(coefficients['Feature'], coefficients['AbsoluteCoefficient'])
+plt.xlabel('Absolute Coefficient Value')
+plt.ylabel('Feature')
+plt.title('Feature Coefficients')
 plt.show()
