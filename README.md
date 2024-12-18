@@ -101,7 +101,7 @@ The `Models\` directory contains the following files for each trained model (eac
 - SHAP Documentation: https://shap.readthedocs.io/en/latest/
 
 ### Youtube Videos:
--  [Neural networks](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) from 3Blue1Brown (video 1 to 4)
+-  [Neural networks](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) from 3Blue1Brown (video 1 to 4 but i watched everything)
 - [How to Create a Neural Network (and Train it to Identify Doodles)](https://www.youtube.com/watch?v=hfMk-kjRv4c) from Sebastian Lague
 - [How to train simple AIs](https://www.youtube.com/watch?v=EvV5Qtp_fYg) from Pezzza's Work
 
