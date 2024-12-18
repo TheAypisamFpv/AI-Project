@@ -9,6 +9,8 @@
 ### Models
 - [Neural Networks](https://github.com/TheAypisamFpv/AI-Project/tree/neural-network)
 - [Linear Regression](https://github.com/TheAypisamFpv/AI-Project/tree/linear-regression)
+- [Logistic Regression](https://github.com/TheAypisamFpv/AI-Project/tree/logisticRegression)
+- [SVM](https://github.com/TheAypisamFpv/AI-Project/tree/svm_model)
 
 ## Requirements (branch specific)
 ### Python 3.11.x - 3.12.x
