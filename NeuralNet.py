@@ -315,10 +315,10 @@ def detectOverfitting(history, lossFunction):
     if lossFunction == 'squared_hinge':
         valLoss = np.array(valLoss) - 1
 
-    acc_diff = trainAcc[-1] - valAcc[-1]
-    loss_diff = valLoss[-1] - trainLoss[-1]
+    accDiff = trainAcc[-1] - valAcc[-1]
+    lossDiff = valLoss[-1] - trainLoss[-1]
 
-    if (acc_diff > 0.1) or (loss_diff > 0.1):
+    if (accDiff > 0.15) or (lossDiff > 0.15):
         print("Warning: The model is overfitting.")
     else:
         print("The model is not overfitting.")
@@ -395,7 +395,7 @@ def findInputImportance(model, features, numSamples=50, shapSampleSize=100, numR
     plt.clf()
 
     # Bar plot of feature importance
-    shap.summary_plot(meanShapValues.values, shapSample, plot_type='bar', show=False, max_display=13)
+    shap.summary_plot(meanShapValues.values, shapSample, plot_type='bar', show=False, max_display=15)
     if plotSavePath:
         plt.savefig(f"{plotSavePath}/shapBarPlot.png")
 
@@ -851,14 +851,14 @@ def runModelTraining():
             [features.shape[1], 512, 256, 128, 64, 1],
             # [features.shape[1], 512, 512, 256, 128, 64, 1],
         ],
-        'epochs': [50, 100, 150],
-        'batchSize': [20, 32],
-        'dropoutRate': [0.2, 0.3],
+        'epochs': [100],
+        'batchSize': [32],
+        'dropoutRate': [0.3],
         'l2_reg': [0.001, 0.01],
-        'learningRate': [0.001, 0.01],
+        'learningRate': [0.001, 0.0005],
         "metrics": [
             ['Accuracy', 'Recall', 'Precision'],
-            # ['Accuracy', 'Precision'],
+            ['Accuracy', 'Precision'],
             # ['Accuracy', 'Recall'],
             # ['Accuracy'],
         ],

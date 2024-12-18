@@ -52,7 +52,7 @@ class NeuralNetApp:
         self.fps = 60
 
         # Clustering settings
-        self.clusterThreshold = 30  # Number of neurons with 
+        self.clusterThreshold = 50  # Number of neurons with 
         self.enableClustering = True  # Variable to toggle clustering
 
 
@@ -80,7 +80,9 @@ class NeuralNetApp:
         self.modelFilePath = None
         self.model = None
         self.mapping = None
+        self.featuresImportance = None
         self.lastInputValues = None
+        self.lastInputChangeTime = time.time()
 
         # Margins for visualization
         self.leftMargin = 600
@@ -120,7 +122,7 @@ class NeuralNetApp:
         except ValueError:
             return False
 
-    def loadModelFeaturesMapping(self):
+    def loadModelParams(self):
         """
         Load the mapping values for the model features from a CSV file.
         """
@@ -132,7 +134,7 @@ class NeuralNetApp:
 
         mappingFilePath = directory + r"MappingValues.csv"
         paramsFilePath = directory + modelName + '.params'
-
+        print(f"\nLoading model parameters from {paramsFilePath}...")
         if not os.path.exists(paramsFilePath):
             print(f"No .params file found at {paramsFilePath}, using default random seed (42)")
         else:  
@@ -150,18 +152,16 @@ class NeuralNetApp:
 
                         
                         
-
+        print("\nChecking for mapping values...")
         if not os.path.exists(mappingFilePath):
             # use default values
             errorMessage = "No mapping file found, using default values (this may not work for all models)"
-            print()
             print("-" * len(errorMessage))
             print(errorMessage)
             print("-" * len(errorMessage))
-            print()
             mappingFilePath = r"GeneratedDataSet\MappingValues.csv"
         else:
-            print(f"\nLoading mapping values from {mappingFilePath}...\n")
+            print(f"Loading mapping values from {mappingFilePath}...")
 
         
         mapping = {}
@@ -174,7 +174,19 @@ class NeuralNetApp:
                     value = eval(value)
                 mapping[header] = value
 
-        return mapping
+        self.mapping = mapping
+        print(f"Loaded mapping values from {mappingFilePath}\n")
+
+        # Load feature importance from CSV if it exists
+        importanceFilePath = os.path.join(directory, "FeatureImportance.csv")
+        print(f"Checking for feature importance file at {importanceFilePath}...")
+        if os.path.exists(importanceFilePath):
+            self.featuresImportance = pd.read_csv(importanceFilePath, index_col=0)["Importance"].to_dict()
+            print(f"Loaded feature importance from {importanceFilePath}\n")
+        else:
+            self.featuresImportance = {feature: 1 for feature in self.mapping.keys()}
+            print("Feature importance file not found, using default neuron size\n")
+    
 
     def selectModelFile(self):
         """
@@ -240,10 +252,38 @@ class NeuralNetApp:
         Parse input values and get a prediction from the model.
         """
         inputData = []
-        if self.lastInputValues == self.inputValues:
+        waitTime = 0.5
+        print(time.time() - self.lastInputChangeTime)
+        lastInputChangeTime = time.time() - self.lastInputChangeTime
+
+        if self.lastInputValues != self.inputValues and self.lastInputValues:
+            self.lastInputChangeTime = time.time()
+            self.lastInputValues = self.inputValues.copy()
             return None, None
 
+        if (lastInputChangeTime < waitTime or lastInputChangeTime > waitTime + 0.2) and self.lastInputValues:
+            return None, None
+
+
+
+
+
+
+        # # return nothing if the input values have changed within the waitTime
+        # if lastInputChangeTime < waitTime and self.lastInputValues != self.inputValues:
+        #     # self.lastInputChangeTime = time.time()
+        #     # self.lastInputValues = self.inputValues.copy()
+        #     return None, None
+        
+        # # # return None, None if the input values have not changed
+        # if self.lastInputValues == self.inputValues:
+        #     self.lastInputChangeTime = time.time()
+        #     return None, None
+
         self.lastInputValues = self.inputValues.copy()
+        # self.lastInputChangeTime = time.time()
+
+
         
         for inputName, inputValue in self.inputValues.items():
             if not inputValue:
@@ -309,7 +349,7 @@ class NeuralNetApp:
             return [(i,) for i in range(layerOutputs.shape[1])]  # No clustering if disabled
 
         numNeurons = layerOutputs.shape[1]
-        if numNeurons <= self.clusterThreshold:
+        if numNeurons < self.clusterThreshold:
             return [(i,) for i in range(numNeurons)]  # No clustering needed
 
         clustering = AgglomerativeClustering(n_clusters=self.clusterThreshold)
@@ -346,22 +386,13 @@ class NeuralNetApp:
     
         # Extract weights from the model
         weights = [layer.get_weights()[0] for layer in model.layers if isinstance(layer, tf.keras.layers.Dense)]
-        lineWidth = 3
+        # lineWidth = 3
     
         self.screen.set_clip(self.visualisationArea)
-    
-        # Load feature importance from CSV if it exists
-        modelDirectory = os.path.dirname(self.modelFilePath)
-        importanceFilePath = os.path.join(modelDirectory, "FeatureImportance.csv")
-        if os.path.exists(importanceFilePath):
-            featuresImportance = pd.read_csv(importanceFilePath, index_col=0)["Importance"].to_dict()
-            print(f"Loaded feature importance from {importanceFilePath}")
-        else:
-            featuresImportance = {feature: 1 for feature in self.mapping.keys()}
-            print("Feature importance file not found, using default neuron size")
-    
-        maxImportance = max(featuresImportance.values())
-        minImportance = min(featuresImportance.values())
+
+        # Get feature importance
+        maxImportance = max(self.featuresImportance.values())
+        minImportance = min(self.featuresImportance.values())
         importanceRange = maxImportance - minImportance 
     
         def normalizeImportance(importance):
@@ -400,7 +431,8 @@ class NeuralNetApp:
     
             for currentCluster in currentClusters:
                 currentClusterOutput = np.mean([allOutputs[i][0][j] for j in currentCluster])
-                normalizedOutput = (currentClusterOutput + 1) / 2
+                # normalize the output to [0, 1] using the NORMALIZATION_RANGE
+                normalizedOutput = (currentClusterOutput - self.NORMALIZATION_RANGE[0]) / (self.NORMALIZATION_RANGE[1] - self.NORMALIZATION_RANGE[0])
                 color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
                 y = currentYStart + np.mean([j * currentNeuronSpacing for j in currentCluster])
     
@@ -442,14 +474,15 @@ class NeuralNetApp:
     
             for cluster in clusters:
                 clusterOutput = np.mean([allOutputs[i][0][j] for j in cluster])
-                normalizedOutput = (clusterOutput + 1) / 2
+                # normalize the output to [0, 1] using the NORMALIZATION_RANGE
+                normalizedOutput = (clusterOutput - self.NORMALIZATION_RANGE[0]) / (self.NORMALIZATION_RANGE[1] - self.NORMALIZATION_RANGE[0])
                 color = self.interpolateColor(self.NEGATIVE_COLOR, self.POSITIVE_COLOR, normalizedOutput)
                 y = yStart + np.mean([j * neuronSpacing for j in cluster])
                 
                 # Adjust neuron radius based on importance for input layer
                 if i == 0:
                     feature = list(self.mapping.keys())[cluster[0]]
-                    importance = featuresImportance.get(feature, 1)
+                    importance = self.featuresImportance.get(feature, 1)
                     adjustedRadius = int(normalizeImportance(importance))
                 else:
                     adjustedRadius = neuronRadius
@@ -607,7 +640,7 @@ class NeuralNetApp:
                             self.modelFilePath = self.selectModelFile()
                             if self.modelFilePath:
                                 self.model = loadModel(self.modelFilePath)
-                                self.mapping = self.loadModelFeaturesMapping()
+                                self.loadModelParams()
                                 self.updateInputBoxes()
                     else:
                         # If model is loaded, check if any input box is clicked
