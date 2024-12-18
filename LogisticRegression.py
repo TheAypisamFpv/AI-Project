@@ -1,12 +1,11 @@
 
-# perform hyperparameter tuning with gridsearch
+# Load libraries
 from sklearn.model_selection import GridSearchCV
 from sklearn.linear_model import LogisticRegression
 from sklearn.model_selection import train_test_split
 import pandas as pd 
 
 # load data
-
 file_path = 'GeneratedDataSet/ModelDataSet.csv'
 
 df = pd.read_csv(file_path)
@@ -38,18 +37,18 @@ model = LogisticRegression(penalty='l2', solver='liblinear')
 param_grid = {
     'C': [0.0001, 0.001, 0.01, 0.1, 1, 10, 100, 1000],
     'solver': ['liblinear', 'saga'],
-    'penalty': ['l1', 'l2'],  # Add L1 regularization
+    'penalty': ['l1', 'l2'],  
 }
 
 
-# instantiate gridsearchn
+# instantiate gridsearch
 grid = GridSearchCV(model, param_grid, cv=5, scoring='roc_auc', n_jobs=-1)
 grid.fit(X_train, y_train)
 
 # print best params
-print("Best hyperparameters",grid.best_params_)
-print("Best score attained",grid.best_score_)
-print("Best model",grid.best_estimator_)
+print("Best hyperparameters:",grid.best_params_)
+print("Best score attained:",grid.best_score_)
+print("Best model:",grid.best_estimator_)
 
 # print accuracy
 print(grid.score(X_test, y_test))
@@ -72,8 +71,8 @@ disp.plot(cmap=plt.cm.Blues)
 
 # Add title and labels
 plt.title("Confusion Matrix")
-plt.show()
 plt.savefig('Plots/LogisticRegressionCM.png')
+plt.show()
 
 
 # print classification report
@@ -84,15 +83,16 @@ print(classification_report(y_test, y_pred))
 from sklearn.metrics import RocCurveDisplay
 import matplotlib.pyplot as plt
 
-# Assuming you have a trained model and test data
+# Get the probabilities for the positive class
 y_proba = grid.best_estimator_.predict_proba(X_test)[:, 1]  # Probabilities for the positive class
 RocCurveDisplay.from_predictions(y_test, y_proba)
 
 # Add title and labels
 plt.title("ROC Curve")
-plt.show()
  # save plot as image
 plt.savefig('Plots/LogisticRegressionROC.png')
+plt.show()
+
 
 # Visualize features influencing the model
 # Get feature coefficients
@@ -115,8 +115,8 @@ plt.barh(coef_df["Feature"], coef_df["Coefficient"])
 plt.xlabel("Coefficient Value")
 plt.ylabel("Feature")
 plt.title("Feature Importance")
+plt.savefig('Plots/FeatureImportancePlot.png')
 plt.show()
-
 
 # save model
 import joblib
