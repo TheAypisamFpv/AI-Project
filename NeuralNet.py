@@ -1,9 +1,10 @@
-import os
-import json
+from progressBar import getProgressBar
+from math import floor
 import pandas as pd
 import numpy as np
-from math import floor
-from progressBar import getProgressBar
+import shap
+import json
+import os
 
 from sklearn.model_selection import train_test_split, ParameterGrid
 from sklearn.preprocessing import LabelEncoder
@@ -21,8 +22,6 @@ from tensorflow.keras.layers import Dense, Dropout  # type: ignore
 from tensorflow.keras.models import load_model  # type: ignore
 from tensorflow.keras.models import Sequential  # type: ignore
 from tensorflow.keras.regularizers import l2  # type: ignore
-
-import shap
 
 from joblib import Parallel, delayed
 import multiprocessing
@@ -405,7 +404,7 @@ def findInputImportance(model, features, numSamples=50, shapSampleSize=100, numR
     return featuresImportance
 
 
-def saveModel(model: tf.keras.Model, filePath:str):
+def saveModel(model:tf.keras.Model, filePath:str):
     """Save the trained neural network model to the specified file path.
 
     The model is saved in Keras format. If the provided file path does not end with '.keras',
@@ -619,6 +618,8 @@ def predictWithModel(model, inputData):
     outputs = [layer.output for layer in model.layers if isinstance(layer, tf.keras.layers.Dense)]
     if not outputs:
         raise ValueError("The model does not contain any Dense layers.")
+
+    print(f"seed: {RANDOM_SEED}")
     
     intermediateModel = tf.keras.Model(inputs=model.inputs, outputs=outputs)
     # Get the outputs

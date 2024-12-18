@@ -1,23 +1,18 @@
-import json
-import time
 from sklearn.cluster import AgglomerativeClustering
-from NeuralNet import predictWithModel, loadModel, findInputImportance
 from tkinter import Tk, filedialog
 import tensorflow as tf
+import NeuralNet as dnn
 import pandas as pd
 import numpy as np
 import pyperclip
 import threading
 import difflib
 import pygame
+import json
+import time
 import csv
 import os
 
-
-# Set a random seed for reproducibility
-RANDOM_SEED = 42
-np.random.seed(RANDOM_SEED)
-tf.random.set_seed(RANDOM_SEED)
 
 
 class NeuralNetApp:
@@ -83,6 +78,7 @@ class NeuralNetApp:
         self.featuresImportance = None
         self.lastInputValues = None
         self.lastInputChangeTime = time.time()
+        self.waitTime = 1 #s
 
         # Margins for visualization
         self.leftMargin = 600
@@ -144,6 +140,7 @@ class NeuralNetApp:
                 if not 'randomSeed' in params:
                     print(f"No random seed found in {paramsFilePath}, using default seed (42)")
                 try:
+                    dnn.RANDOM_SEED = int(params['randomSeed'])
                     np.random.seed(int(params['randomSeed']))
                     tf.random.set_seed(int(params['randomSeed']))
                     print(f"Loaded random seed from {paramsFilePath}")
@@ -252,8 +249,7 @@ class NeuralNetApp:
         Parse input values and get a prediction from the model.
         """
         inputData = []
-        waitTime = 0.5
-        print(time.time() - self.lastInputChangeTime)
+        print(time.time() - self.lastInputChangeTime) # DEBUG
         lastInputChangeTime = time.time() - self.lastInputChangeTime
 
         if self.lastInputValues != self.inputValues and self.lastInputValues:
@@ -261,7 +257,7 @@ class NeuralNetApp:
             self.lastInputValues = self.inputValues.copy()
             return None, None
 
-        if (lastInputChangeTime < waitTime or lastInputChangeTime > waitTime + 0.2) and self.lastInputValues:
+        if (lastInputChangeTime < self.waitTime or lastInputChangeTime > self.waitTime + 0.2) and self.lastInputValues:
             return None, None
 
 
@@ -323,7 +319,7 @@ class NeuralNetApp:
         if inputData.shape[1] != expectedInputShape:
             raise ValueError(f"Expected input shape ({expectedInputShape}) does not match provided input shape ({inputData.shape[1]})")
 
-        prediction, intermediateOutputs = predictWithModel(self.model, inputData)
+        prediction, intermediateOutputs = dnn.predictWithModel(self.model, inputData)
         return prediction, intermediateOutputs
 
 
@@ -639,7 +635,7 @@ class NeuralNetApp:
                         if hasattr(self, 'selectModelButton') and self.selectModelButton.collidepoint(event.pos):
                             self.modelFilePath = self.selectModelFile()
                             if self.modelFilePath:
-                                self.model = loadModel(self.modelFilePath)
+                                self.model = dnn.loadModel(self.modelFilePath)
                                 self.loadModelParams()
                                 self.updateInputBoxes()
                     else:
