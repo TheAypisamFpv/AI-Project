@@ -14,26 +14,43 @@ def runGridSearch(models_param_grids, X_train, y_train):
     best_model = None
     best_model_name = None
 
+    print("Recherche par grille en cours...")
+
     for model_name, (model_class, param_grid) in models_param_grids.items():
+        print(f"Recherche par grille pour {model_name}...")
+        i = 0
         for params in ParameterGrid(param_grid):
+            len_param_grids = len(ParameterGrid(param_grid))
+            i += 1
+            # Créer une instance du modèle avec les paramètres spécifiés
             model = model_class(**params)
+
             try:
                 # Utiliser la validation croisée pour évaluer le modèle
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", category=ConvergenceWarning)
+                    training_history = model.fit(X_train, y_train)
                     scores = cross_val_score(model, X_train, y_train, cv=5, scoring='neg_mean_squared_error')
-                score = -scores.mean()  # Convertir en MSE positif
-                
-                if score < best_score:
-                    best_score = score
-                    best_params = params
-                    best_model = model
-                    best_model_name = model_name
+                    score = -scores.mean()
             except Exception as e:
-                print(f"Error with model {model_name} and parameters {params}: {e}")
+                print(f"Error training {model_name} with params {params}: {e}")
+                continue
 
-    print(f"Best model: {best_model_name} with parameters: {best_params}")
-    best_model.fit(X_train, y_train)  # Entraîner le meilleur modèle sur toutes les données d'entraînement
+            # Conserver le meilleur modèle
+            if score < best_score:
+                best_score = score
+                best_params = params
+                best_model = model
+                best_model_name = model_name
+
+            print(f"Meilleur score actuel (goba) : {best_score:.2f} ({i}/{len_param_grids}) (score trouvé : {score:.2f})  ", end='\r')
+        
+        print('\n')
+
+    print(f"Best model: {best_model_name}")
+    print(f"Best params: {best_params}")
+    print(f"Best score: {best_score}")
+
     return best_model
 
 data = pd.read_csv(r"GeneratedDataSet\ModelDataSet.csv")
@@ -67,18 +84,18 @@ models_param_grids = {
         'positive': [True, False]
     }),
     'Ridge': (Ridge, {
-        'alpha': [0.1, 1.0, 10.0, 100.0],
+        'alpha': [0.01, 0.1, 1.0, 10.0, 100.0],
         'fit_intercept': [True, False],
         'solver': ['auto', 'svd', 'cholesky', 'lsqr', 'sparse_cg', 'sag', 'saga'],
         'max_iter': [1000, 5000, 10000]
     }),
     'Lasso': (Lasso, {
-        'alpha': [0.1, 1.0, 10.0, 100.0],
+        'alpha': [0.01, 0.1, 1.0, 10.0, 100.0],
         'fit_intercept': [True, False],
         'max_iter': [1000, 5000, 10000]
     }),
     'ElasticNet': (ElasticNet, {
-        'alpha': [0.1, 1.0, 10.0, 100.0],
+        'alpha': [0.01, 0.1, 1.0, 10.0, 100.0],
         'l1_ratio': [0.1, 0.5, 0.9],
         'fit_intercept': [True, False],
         'max_iter': [1000, 5000, 10000]
