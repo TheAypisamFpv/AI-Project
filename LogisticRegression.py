@@ -10,6 +10,56 @@ file_path = 'GeneratedDataSet/ModelDataSet.csv'
 
 df = pd.read_csv(file_path)
 
+# drop the 'EmployeeID ' column for ethical reasons(privacy)
+df.drop('EmployeeID ', axis=1, inplace=True)
+
+df_copy = df.copy()
+
+# find list of columns that are highly correlated
+"""
+Logistic Regression assumes that the features are independent of each other.It doesn;t work well when features are higlighly corelated with each other.
+In order to improve the performance of the model. we must observe the correlation between features and remove highly correlated features.
+"""
+threshold = 0.7
+correlated_features = set()
+columns = df.columns
+for i, col in enumerate(columns):
+    for col2 in columns[i + 1:]:  # Compare only unique pairs
+        corr = df[col].corr(df[col2])
+        if abs(corr) > threshold:
+            correlated_features.add((col, col2))
+            print(f"Highly Correlated: {col} and {col2} -> Correlation: {corr}")
+
+
+# Instead of dropping the columns, we can create a new column as a ratio of the two columns to preserve the information
+for col, col2 in correlated_features:
+    # Safely create a new column as a ratio
+    new_col_name = f"{col.strip()}_per_{col2.strip()}"
+    df_copy[new_col_name] = df_copy[col] / (df_copy[col2] + 1e-9)  
+    # drop the original columns
+    df_copy.drop([col, col2], axis=1, inplace=True)
+
+# display new dataset for additional features
+df = df_copy
+print(df_copy.head())
+
+# check correlation with 'Attrition'
+"""
+Logistic regression works well when the features are correlated with the target variable.
+It is important to check for this correlation to see if the model will perform well or not.
+"""
+correlation = df.corr()['Attrition '].sort_values(ascending=False)
+print('Correlation with Attrition') 
+print(correlation)
+
+"""
+The correlation values are very low. This means that the features well correlated with our target variable.
+Hence the model may not perform well.
+"""
+
+# Start building the model
+
+# Split the data into X and y
 X = df.drop('Attrition ', axis=1)
 y = df['Attrition ']
 
