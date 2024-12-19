@@ -44,7 +44,6 @@ print(f"\nPrécision du modèle : {accuracy:.2f}")
 
 # Charger les données
 #data = pd.read_csv("ModelDataSet.csv")
-
 # Calculer la matrice de corrélation
 corr_matrix = data.corr()
 
