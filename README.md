@@ -1,18 +1,7 @@
+# Using Logistic regression for classification( to determine attrition at a  workplace)
 
-
-
-
-
-
-
-
-
-
-
-
-
-
-
+## Description
+The project utilised Logistic regression model to classify employees' attrition based on provided data. 
 
 
 ## References
