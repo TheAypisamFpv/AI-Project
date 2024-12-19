@@ -1,6 +1,6 @@
 from sklearn.model_selection import ParameterGrid, train_test_split, cross_val_score
 from sklearn.linear_model import LinearRegression, Ridge, Lasso, ElasticNet
-from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, accuracy_score, precision_score, recall_score, f1_score
+from sklearn.metrics import mean_squared_error, r2_score, mean_absolute_error, accuracy_score, precision_score, recall_score, f1_score, confusion_matrix, ConfusionMatrixDisplay
 import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
@@ -29,7 +29,6 @@ def runGridSearch(models_param_grids, X_train, y_train):
                 # Utiliser la validation croisée pour évaluer le modèle
                 with warnings.catch_warnings():
                     warnings.filterwarnings("ignore", category=ConvergenceWarning)
-                    training_history = model.fit(X_train, y_train)
                     scores = cross_val_score(model, X_train, y_train, cv=5, scoring='neg_mean_squared_error')
                     score = -scores.mean()
             except Exception as e:
@@ -43,7 +42,7 @@ def runGridSearch(models_param_grids, X_train, y_train):
                 best_model = model
                 best_model_name = model_name
 
-            print(f"Meilleur score actuel (goba) : {best_score:.2f} ({i}/{len_param_grids}) (score trouvé : {score:.2f})  ", end='\r')
+            print(f"Meilleur score actuel : {best_score:.2f} ({i}/{len_param_grids}) (score trouvé : {score:.2f})  ", end='\r')
         
         print('\n')
 
@@ -51,6 +50,8 @@ def runGridSearch(models_param_grids, X_train, y_train):
     print(f"Best params: {best_params}")
     print(f"Best score: {best_score}")
 
+    # Ajuster le meilleur modèle sur toutes les données d'entraînement
+    best_model.fit(X_train, y_train)
     return best_model
 
 data = pd.read_csv(r"GeneratedDataSet\ModelDataSet.csv")
@@ -124,6 +125,13 @@ print(f"Accuracy : {accuracy:.2f}")
 print(f"Precision : {precision:.2f}")
 print(f"Recall : {recall:.2f}")
 print(f"F1 Score : {f1:.2f}")
+
+# Calculer et afficher la matrice de confusion
+conf_matrix = confusion_matrix(test_labels, y_pred_binary)
+disp = ConfusionMatrixDisplay(confusion_matrix=conf_matrix)
+disp.plot()
+plt.title('Confusion Matrix')
+plt.show(block=False)
 
 coefficients = pd.DataFrame({
     'Feature': Input_features.columns,
