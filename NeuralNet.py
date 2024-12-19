@@ -28,6 +28,7 @@ import multiprocessing
 
 import matplotlib.pyplot as plt
 import matplotlib.animation as animation
+import seaborn as sns
 
 # Set TensorFlow threading parameters
 tf.config.threading.set_intra_op_parallelism_threads(11)
@@ -96,9 +97,10 @@ def loadAndPreprocessData(filePath:str, specifiedColumnsToDrop:list = []):
     # Drop specified columns
     print("Dropping columns :")
     for column in specifiedColumnsToDrop:
-        if column in data.columns:
-            data = data.drop(column, axis=1)
-            print(f"\t- {column}")
+        matchingColumns = [col for col in data.columns if col.lower() == column.lower()]
+        for actualColumn in matchingColumns:
+            data = data.drop(actualColumn, axis=1)
+            print(f"\t- {actualColumn}")
 
     print()
 
@@ -548,7 +550,7 @@ def plotLearningCurve(history, epochs, elapsedTime, lossFunction):
     return ani
 
 
-def evaluateModel(model, TestFeatures, actualLabels, threshold=0.3):
+def evaluateModel(model, TestFeatures, actualLabels, threshold=0.3, verbose=1):
     """Evaluate the trained model's performance on the test dataset.
 
     This function calculates the predicted probabilities, converts them to binary labels based on a threshold,
@@ -569,13 +571,17 @@ def evaluateModel(model, TestFeatures, actualLabels, threshold=0.3):
     """
     predictedProb = model.predict(TestFeatures)
     predictedLabel = (predictedProb > threshold).astype("int32")
-    print("Classification Report:")
-    print(classification_report(actualLabels, predictedLabel, zero_division=0))
-    print("Confusion Matrix:")
-    print(confusion_matrix(actualLabels, predictedLabel))
+    if verbose: print("Classification Report:")
+    classificationReport = classification_report(actualLabels, predictedLabel, zero_division=0)
+    if verbose: print(classificationReport)
+    if verbose: print("Confusion Matrix:")
+    confusionMatrix = confusion_matrix(actualLabels, predictedLabel)
+    if verbose: print(confusionMatrix)
+
+    return classificationReport, confusionMatrix
 
 
-def loadModel(modelPath:str):
+def loadModel(modelPath:str, verbose=1):
     """Load a trained neural network model from the specified file path.
 
     Args:
@@ -587,9 +593,9 @@ def loadModel(modelPath:str):
     Raises:
         IOError: If the model cannot be loaded from the specified path.
     """
-    print(f"\nLoading model from '{modelPath}'...")
+    if verbose: print(f"\nLoading model from '{modelPath}'...")
     model = load_model(modelPath)
-    print(f"Model loaded successfully")
+    if verbose: print(f"Model loaded successfully")
     return model
 
 
@@ -839,8 +845,8 @@ def runModelTraining():
     tableToDrop = ['AverageHoursWorked']
 
     # Load and preprocess the dataset
-    datasetFilePat = r'GeneratedDataSet\ModelDataSet.csv'
-    features, target = loadAndPreprocessData(datasetFilePat, tableToDrop)
+    datasetFilePath = r'GeneratedDataSet\ModelDataSet.csv'
+    features, target = loadAndPreprocessData(datasetFilePath, tableToDrop)
 
     # Define hyperparameter grid for grid search
     hyperparameterGrid = {
@@ -961,5 +967,90 @@ def runModelTraining():
     return savePath
 
 
+def getConfusionMatrix(modelPath, features:pd.DataFrame, target:pd.Series, verbose=1):
+    """Load a trained model and generate the confusion matrix for the test dataset.
+
+    Args:
+        modelPath (str): The path to the saved Keras model file.
+        features (pd.DataFrame): The preprocessed feature columns.
+        target (pd.Series): The target variable column.
+
+    Returns:
+        None
+
+    Prints:
+        - Confusion matrix showing true positives, true negatives, false positives, and false negatives.
+    """
+    global RANDOM_SEED
+    if isinstance(modelPath, str):
+        if not os.path.exists(modelPath):
+            raise FileNotFoundError(f"Model file not found: '{modelPath}'")
+        model = loadModel(modelPath, verbose=verbose)
+
+        modelDirectory = os.path.dirname(modelPath)
+        modelName = os.path.basename(modelPath).rsplit('.', 1)[0]
+        if os.path.exists(modelDirectory + f'/{modelName}.params'):
+            if verbose: print(f"Loading model parameters from '{modelDirectory}/{modelName}.params'")
+            with open(modelDirectory + f'/{modelName}.params', 'r') as paramsFile:
+                modelParamters = json.load(paramsFile)
+                RANDOM_SEED = modelParamters['randomSeed']
+                if verbose: print(f"Random seed set to: {RANDOM_SEED}")
+        
+    else:
+        model = modelPath
+
+    if verbose: print("\nEvaluating model...")  
+    return modelName, evaluateModel(model, features, target, verbose=verbose)
+
+def evaluateModelsFromDirectory(rootDir:str, dataset:tuple):
+    """
+    Evaluate all the models in the directory
+    """
+    evaluations = {}
+    
+    for root, dirs, files in os.walk(rootDir):
+        for modelRoot, modelDir, modelFiles in os.walk(root):
+            for file in modelFiles:
+                if file.endswith('.keras'):
+                    modelPath = os.path.join(modelRoot, file)
+                    print(f"\n\nEvaluating model: {modelPath}")
+                    try:
+                        modelName, evals = getConfusionMatrix(modelPath, dataset[0], dataset[1], verbose=0)
+                        # save the evals as .pngs
+                        savePath = modelPath.rsplit('.', 1)[0]
+                        savePath = savePath + '_ConfusionMatrix.png'
+                        plt.figure(figsize=(8, 6))
+                        sns.heatmap(evals[1], annot=True, fmt='d', cmap='Blues', cbar=False)
+                        plt.xlabel('Predicted Label')
+                        plt.ylabel('True Label')
+                        plt.title(f'Confusion Matrix for {modelName}')
+                        plt.savefig(savePath)
+                        print(f"Saved confusion matrix for {modelName} as '{savePath}'")
+                        plt.close()
+
+                        
+                        evaluations[modelName] = evals
+                    except Exception as e:
+                        print(f"Error evaluating model: {e}")
+
+
+    # sort the evaluations by validation accuracy
+    sortedEvals = sorted(evaluations.items(), key=lambda x: x[1][1].all(), reverse=True)
+
+    for modelName, evals in sortedEvals:
+        print(f"\n\nModel: {modelName}")
+        print(evals[0])
+        print()
+        print(evals[1])
+
 if __name__ == '__main__':
-    modelPath = runModelTraining()
+    datasetFilePath = r'GeneratedDataSet\ModelDataSet.csv'
+    modelDir = "Models\\"
+    
+    tableToDrop = ['AverageHoursWorked']
+
+    dataset = loadAndPreprocessData(datasetFilePath, tableToDrop)
+
+    evaluateModelsFromDirectory(modelDir, dataset)
+    
+    # modelPath = runModelTraining()
