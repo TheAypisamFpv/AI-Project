@@ -131,7 +131,7 @@ def buildNeuralNetModel(
     metrics: list,
     loss: str,
     optimizer: str,
-    dropoutRate: float = 0.5,
+    dropoutRates: list[float],  # Changed to list of dropout rates
     l2_reg: float = 0.01
 ):
     """Construct a Sequential neural network model based on the specified architecture and parameters.
@@ -148,7 +148,7 @@ def buildNeuralNetModel(
         metrics (list): List of metrics to evaluate during training.
         loss (str): Loss function to optimize.
         optimizer (str): Optimizer to use for training.
-        dropoutRate (float, optional): Dropout rate for dropout layers to prevent overfitting. Defaults to 0.5.
+        dropoutRates (list[float]): List of dropout rates for each hidden layer.
         l2_reg (float, optional): L2 regularization factor to apply to Dense layers. Defaults to 0.01.
 
     Returns:
@@ -160,13 +160,14 @@ def buildNeuralNetModel(
     model.add(tf.keras.layers.Input(shape=(layers[0],)))
     model.add(Dense(layers[1], activation=inputActivation, kernel_regularizer=l2(l2_reg)))
     model.add(BatchNormalization())
-    model.add(Dropout(dropoutRate))
+    model.add(Dropout(dropoutRates[0]))  # Use the first dropout rate for the input layer
 
     # Add hidden layers with specified activation, dropout, and L2 regularization
-    for hiddenLayer in layers[2:-1]:
+    for i, hiddenLayer in enumerate(layers[2:-1]):
         model.add(Dense(hiddenLayer, activation=hiddenActivation, kernel_regularizer=l2(l2_reg)))
-        model.add(BatchNormalization())    
-        model.add(Dropout(dropoutRate))
+        model.add(BatchNormalization())
+        dropoutRateIndex = min(i + 1, len(dropoutRates) - 1)  # Use the last dropout rate for additional hidden layers
+        model.add(Dropout(dropoutRates[dropoutRateIndex]))
 
     # Add output layer with specified activation and L2 regularization
     model.add(Dense(layers[-1], activation=outputActivation, kernel_regularizer=l2(l2_reg)))
@@ -188,7 +189,7 @@ def trainNeuralNet(
     metrics: list = ['Accuracy'],
     loss: str = 'binary_crossentropy',
     optimizer: str = 'adam',
-    dropoutRate: float = 0.5,
+    dropoutRates: list[float] = [0.5],
     trainingTestingSplit: float = 0.2,
     l2_reg: float = 0.01,
     verbose: int = 1
@@ -211,7 +212,7 @@ def trainNeuralNet(
         metrics (list, optional): List of metrics to evaluate during training. Defaults to ['Accuracy'].
         loss (str, optional): Loss function to optimize. Defaults to 'binary_crossentropy'.
         optimizer (str, optional): Optimizer to use for training. Defaults to 'adam'.
-        dropoutRate (float, optional): Dropout rate for dropout layers to prevent overfitting. Defaults to 0.5.
+        dropoutRates (list[float], optional): List of dropout rates for each hidden layer. Defaults to [0.5].
         trainingTestingSplit (float, optional): Fraction of the dataset to include in the test split. Defaults to 0.2.
         l2_reg (float, optional): L2 regularization factor to apply to Dense layers. Defaults to 0.01.
         verbose (int, optional): Verbosity mode (0 = silent, 1 = progress bar). Defaults to 1.
@@ -252,7 +253,7 @@ def trainNeuralNet(
         metrics=metrics,
         loss=loss,
         optimizer=optimizer,
-        dropoutRate=dropoutRate,
+        dropoutRates=dropoutRates,  # Pass the list of dropout rates
         l2_reg=l2_reg
     )
 
@@ -282,9 +283,6 @@ def trainNeuralNet(
             print(f'Accuracy: {Accuracy * 100:.2f}%')
         else:
             print('Accuracy metric is not available.')
-
-    # Perform additional evaluation
-    # evaluateModel(model, TestFeatures, testLabels)
 
     return model, history
 
@@ -694,7 +692,7 @@ def runGridSearch(features, target, paramGrid:dict, CPULimitation:float = 0.7):
                 metrics=params['metrics'],
                 loss=params['loss'],
                 optimizer=optimizer,
-                dropoutRate=params['dropoutRate'],
+                dropoutRates=params['dropoutRate'],
                 trainingTestingSplit=params['trainingTestingSplit'],
                 l2_reg=params['l2_reg'],
                 verbose=0
@@ -848,22 +846,25 @@ def runModelTraining():
     hyperparameterGrid = {
         'layers': [
             # [features.shape[1], 128, 64, 1],
-            [features.shape[1], 256, 128, 64, 1],
+            # [features.shape[1], 256, 128, 64, 1],
             [features.shape[1], 512, 256, 128, 64, 1],
             # [features.shape[1], 512, 512, 256, 128, 64, 1],
         ],
-        'epochs': [100],
-        'batchSize': [32],
-        'dropoutRate': [0.3],
-        'l2_reg': [0.001, 0.01],
+        'epochs': [150],
+        'batchSize': [32, 20],
+        'dropoutRate': [
+            # [0.5, 0.5, 0.5, 0.5, 0.5],
+            [0.5, 0.4, 0.3, 0.2, 0.1],
+        ], # better to use the same number as the number of hidden layers + input layer
+        'l2_reg': [0.015, 0.01],
         'learningRate': [0.001, 0.0005],
         "metrics": [
-            ['Accuracy', 'Recall', 'Precision'],
+            # ['Accuracy', 'Recall', 'Precision'],
             ['Accuracy', 'Precision'],
             # ['Accuracy', 'Recall'],
             # ['Accuracy'],
         ],
-        'trainingTestingSplit': [0.2, 0.3, 0.4],
+        'trainingTestingSplit': [0.2],
         'inputActivation': ['relu', 'tanh'],
         'hiddenActivation': ['relu', 'tanh'],
         'outputActivation': ['sigmoid'],
@@ -901,7 +902,7 @@ def runModelTraining():
         metrics=bestParams['metrics'],
         loss=bestParams['loss'],
         optimizer=optimizer,
-        dropoutRate=bestParams['dropoutRate'],
+        dropoutRates=bestParams['dropoutRate'],
         trainingTestingSplit=0.2,
         l2_reg=bestParams['l2_reg'],
         verbose=1
