@@ -50,9 +50,9 @@ pip install -r requirements.txt
 - Normalize numerical columns with padding for large values.
 - Save the preprocessed data to `GeneratedDataSet/ModelDataSet.csv`.
 
----
 
-### Deep Neural Network Training
+
+## Deep Neural Network Training
 - Split the dataset into training and testing sets with stratification.
 - Compute class weights to handle class imbalance.
 - Build the deep neural network (DNN) model with specified architecture and parameters.
@@ -60,10 +60,10 @@ pip install -r requirements.txt
 - Evaluate the model on the test set.
 - Perform additional evaluation using SHAP values to determine feature importance.
 
----
 
-### Best Models as of Now:
-#### With `AverageHoursWorked` (Validation Accuracy: 98%):
+
+## Best Models as of Now:
+### With `AverageHoursWorked` (Validation Accuracy: 98%):
 
 `TrainedModel_333596_3`
 
@@ -86,7 +86,9 @@ pip install -r requirements.txt
 }
 ```
 
-#### Without `AverageHoursWorked` (Validation Accuracy: 97%):
+### Without `AverageHoursWorked` (Validation Accuracy: 97%):
+
+I also trained a model without the `AverageHoursWorked` feature, in case the feature is not easily obtainable.
 
 `TrainedModel_285607_14`
 
@@ -112,17 +114,17 @@ pip install -r requirements.txt
 
 These models can be found in the `models` directory in the folder of the same name.
 
----
 
-### Running the Deep Neural Network
+
+## Running the Deep Neural Network
 - The `RunNeuralNet.py` script initializes the neural network application.
 - The application allows users to select a model file and visualize the neural network's predictions.
 - The visualization includes neuron connections and output values, with colors indicating the neuron's output value.
 - The application uses hierarchical clustering to cluster neurons when the number of neurons exceeds a threshold.
 
----
 
-### Models Directory
+
+## Models Directory
 The `Models\` directory contains the following files for each trained model (each model has its own subdirectory):
 - `Model_<train_accuracy>_<validation_accuracy>_<elapsed_time>.keras`: The trained neural network model file.
 - `Model_<train_accuracy>_<validation_accuracy>_<elapsed_time>.params`: The hyperparameters used for training the model.
