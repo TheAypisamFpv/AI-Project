@@ -65,7 +65,7 @@ def saveCustomMapping(defaultMappingFilePath:str, updatedMappingFilePath:str, sp
     defaultMapping.to_csv(updatedMappingFilePath, index=False)
     print(f"\nUpdated mapping file saved as '{updatedMappingFilePath}'\n")
 
-def loadAndPreprocessData(filePath:str, specifiedColumnsToDrop:list = []):
+def loadAndPreprocessData(filePath:str, specifiedColumnsToDrop:list = [], binaryToMultiple:bool = False):
     """Load and preprocess the dataset from a CSV file.
 
     This function reads data from the specified CSV file, performs preprocessing steps such as
@@ -114,15 +114,27 @@ def loadAndPreprocessData(filePath:str, specifiedColumnsToDrop:list = []):
         labelEncoders[column] = LabelEncoder()
         data[column] = labelEncoders[column].fit_transform(data[column])
 
-    # Separate features and target variable
-    features = data.drop('Attrition', axis=1)
-    target = data['Attrition']
+    if binaryToMultiple:
+        # Create new target columns for "Stay" and "Quit"
+        data['Stay'] = (data['Attrition'] == 0).astype(int)
+        data['Quit'] = (data['Attrition'] == 1).astype(int)
+        # Separate features and target variable
+        features = data.drop(['Attrition', 'Stay', 'Quit'], axis=1)
+        targets = data[['Stay', 'Quit']] 
+    else:
+        # Separate features and target variable
+        features = data.drop('Attrition', axis=1)
+        targets = data['Attrition']
+    
 
     # Print column names for features and target
     print("Feature columns:", features.columns.tolist())
-    print("Target column:", target.name)
+    if binaryToMultiple:
+        print("Target columns:", targets.columns.tolist())
+    else:
+        print("Target column:", targets.name)
 
-    return features, target
+    return features, targets
 
 
 def buildNeuralNetModel(
@@ -228,6 +240,9 @@ def trainNeuralNet(
         ValueError: If the training or validation metrics are not available.
     """
     # Split the data into training and testing sets with stratification
+    np.random.seed(RANDOM_SEED)
+    tf.random.set_seed(RANDOM_SEED)
+    
     TrainingFeatures, TestFeatures, trainingLabels, testLabels = train_test_split(
         features,
         target,
@@ -240,8 +255,8 @@ def trainNeuralNet(
     trainingLabels = trainingLabels.reset_index(drop=True)
 
     # Compute class weights to handle class imbalance
-    classes = np.unique(trainingLabels)
-    classWeights = compute_class_weight(class_weight='balanced', classes=classes, y=trainingLabels)
+    classes = np.unique(target.values.ravel())  # Ensure all possible classes are included
+    classWeights = compute_class_weight(class_weight='balanced', classes=classes, y=trainingLabels.values.ravel())
     classWeights = {cls: weight for cls, weight in zip(classes, classWeights)}
     
     if verbose: print(f"Computed class weights: {classWeights}")
@@ -846,28 +861,29 @@ def runModelTraining():
 
     # Load and preprocess the dataset
     datasetFilePath = r'GeneratedDataSet\ModelDataSet.csv'
-    features, target = loadAndPreprocessData(datasetFilePath, tableToDrop)
+    features, targets = loadAndPreprocessData(datasetFilePath, tableToDrop, binaryToMultiple=False)
+
+    outputNeuronsNumber = targets.shape[1] if len(targets.shape) > 1 else 1
 
     # Define hyperparameter grid for grid search
     hyperparameterGrid = {
         'layers': [
-            # [features.shape[1], 128, 64, 1],
-            # [features.shape[1], 256, 128, 64, 1],
-            [features.shape[1], 512, 256, 128, 64, 1],
-            # [features.shape[1], 512, 512, 256, 128, 64, 1],
+            [features.shape[1], 512, 256, 128, 64, outputNeuronsNumber],
+            # [features.shape[1], 1024, 512, 64, outputNeuronsNumber],
+            
         ],
         'epochs': [150],
         'batchSize': [32, 20],
         'dropoutRate': [
-            # [0.5, 0.5, 0.5, 0.5, 0.5],
-            [0.5, 0.4, 0.3, 0.2, 0.1],
+            [0.2],
+            [0.5],
         ], # better to use the same number as the number of hidden layers + input layer
         'l2_reg': [0.015, 0.01],
         'learningRate': [0.001, 0.0005],
         "metrics": [
             # ['Accuracy', 'Recall', 'Precision'],
             ['Accuracy', 'Precision'],
-            # ['Accuracy', 'Recall'],
+            ['Accuracy', 'Recall'],
             # ['Accuracy'],
         ],
         'trainingTestingSplit': [0.2],
@@ -878,11 +894,11 @@ def runModelTraining():
         'optimizer': ['adam']
     }
 
-    powerLimitation = 1
+    powerLimitation = 0.8
 
     # Start hyperparameter grid search
     print("\nStarting Grid Search for Hyperparameter Optimization...")
-    bestParams, modelDirectory = runGridSearch(features, target, hyperparameterGrid, powerLimitation)
+    bestParams, modelDirectory = runGridSearch(features, targets, hyperparameterGrid, powerLimitation)
 
     # Create the model directory after finding the best parameters
     os.makedirs(os.path.dirname(modelDirectory), exist_ok=True)
@@ -898,7 +914,7 @@ def runModelTraining():
     optimizer = tf.keras.optimizers.Adam(learning_rate=bestParams['learningRate'])
     model, history = trainNeuralNet(
         features=features,
-        target=target,
+        target=targets,
         layers=bestParams['layers'],
         epochs=bestParams['epochs'],
         batchSize=bestParams['batchSize'],
@@ -967,7 +983,7 @@ def runModelTraining():
     return savePath
 
 
-def getConfusionMatrix(modelPath, features:pd.DataFrame, target:pd.Series, verbose=1):
+def loadAndEvaluateModel(modelPath, features:pd.DataFrame, target:pd.Series, verbose=1):
     """Load a trained model and generate the confusion matrix for the test dataset.
 
     Args:
@@ -1000,7 +1016,12 @@ def getConfusionMatrix(modelPath, features:pd.DataFrame, target:pd.Series, verbo
         model = modelPath
 
     if verbose: print("\nEvaluating model...")  
-    return modelName, evaluateModel(model, features, target, verbose=verbose)
+
+    modelEvaluation = evaluateModel(model, features, target, verbose=verbose)
+    # calculate the score of the confusion matrix (sum of false positives and false negatives)
+    modelMatrixScore = modelEvaluation[1][0][1] + modelEvaluation[1][1][0]
+    
+    return modelName, modelEvaluation, modelMatrixScore
 
 def evaluateModelsFromDirectory(rootDir:str, dataset:tuple):
     """
@@ -1015,12 +1036,12 @@ def evaluateModelsFromDirectory(rootDir:str, dataset:tuple):
                     modelPath = os.path.join(modelRoot, file)
                     print(f"\n\nEvaluating model: {modelPath}")
                     try:
-                        modelName, evals = getConfusionMatrix(modelPath, dataset[0], dataset[1], verbose=0)
+                        modelName, modelEvaluation, modelMatrixScore = loadAndEvaluateModel(modelPath, dataset[0], dataset[1], verbose=0)
                         # save the evals as .pngs
                         savePath = modelPath.rsplit('.', 1)[0]
-                        savePath = savePath + '_ConfusionMatrix.png'
+                        savePath = savePath + f'_ConfusionMatrix_{modelMatrixScore}.png'
                         plt.figure(figsize=(8, 6))
-                        sns.heatmap(evals[1], annot=True, fmt='d', cmap='Blues', cbar=False)
+                        sns.heatmap(modelEvaluation[1], annot=True, fmt='d', cmap='Blues', cbar=False)
                         plt.xlabel('Predicted Label')
                         plt.ylabel('True Label')
                         plt.title(f'Confusion Matrix for {modelName}')
@@ -1029,19 +1050,20 @@ def evaluateModelsFromDirectory(rootDir:str, dataset:tuple):
                         plt.close()
 
                         
-                        evaluations[modelName] = evals
+                        evaluations[modelName] = (modelEvaluation, modelMatrixScore)
                     except Exception as e:
                         print(f"Error evaluating model: {e}")
 
 
-    # sort the evaluations by validation accuracy
-    sortedEvals = sorted(evaluations.items(), key=lambda x: x[1][1].all(), reverse=True)
+    # sort the evaluations by matrix score (lower is better)
+    sortedEvals = sorted(evaluations.items(), key=lambda x: x[1][1], reverse=False)
 
-    for modelName, evals in sortedEvals:
+    for modelName, (modelEvaluation, modelMatrixScore) in sortedEvals:
         print(f"\n\nModel: {modelName}")
-        print(evals[0])
+        print(modelEvaluation[0])
         print()
-        print(evals[1])
+        print(modelEvaluation[1])
+        print(f"Matrix Score: {modelMatrixScore}")
 
 if __name__ == '__main__':
     datasetFilePath = r'GeneratedDataSet\ModelDataSet.csv'

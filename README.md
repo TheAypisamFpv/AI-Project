@@ -63,13 +63,52 @@ pip install -r requirements.txt
 ---
 
 ### Best Models as of Now:
-#### With `AverageHoursWorked` (Validation Accuracy: 97%):
+#### With `AverageHoursWorked` (Validation Accuracy: 98%):
 
-`TrainedModel_[25, 256, 128, 64, 1]_100_32_0.3_0.001_relu_relu_sigmoid_['Accuracy', 'Recall', 'Precision']_binary_crossentropy_adam(0.001)_0.2`
+`TrainedModel_333596_3`
+
+### Parameters:
+```json
+{
+    "batchSize": 32,
+    "dropoutRate": 0.3,
+    "epochs": 100,
+    "hiddenActivation": "relu",
+    "inputActivation": "relu",
+    "l2_reg": 0.001,
+    "layers": [25, 256, 128, 64, 1],
+    "learningRate": 0.0005,
+    "loss": "binary_crossentropy",
+    "metrics": ["Accuracy", "Precision"],
+    "optimizer": "adam",
+    "outputActivation": "sigmoid",
+    "randomSeed": 404
+}
+```
 
 #### Without `AverageHoursWorked` (Validation Accuracy: 97%):
 
-`TrainedModel_[24, 256, 128, 64, 1]_100_32_0.3_0.001_relu_relu_sigmoid_['Accuracy', 'Precision']_binary_crossentropy_adam(0.0005)_0.2`
+`TrainedModel_285607_14`
+
+### Parameters:
+```json
+{
+    "batchSize": 32,
+    "dropoutRate": [0.5, 0.4, 0.3, 0.2, 0.1],
+    "epochs": 100,
+    "hiddenActivation": "relu",
+    "inputActivation": "relu",
+    "l2_reg": 0.001,
+    "layers": [24, 512, 256, 128, 64, 1],
+    "learningRate": 0.001,
+    "loss": "binary_crossentropy",
+    "metrics": ["Accuracy", "Precision"],
+    "optimizer": "adam",
+    "outputActivation": "sigmoid",
+    "trainingTestingSplit": 0.2,
+    "randomSeed": 404
+}
+```
 
 These models can be found in the `models` directory in the folder of the same name.
 
