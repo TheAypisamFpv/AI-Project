@@ -114,15 +114,15 @@ I also trained a model without the `AverageHoursWorked` feature, in case the fea
 
 These models can be found in the `models` directory in the folder of the same name.
 
+<br>
 
-
-## Running the Deep Neural Network
+## Running the Deep Neural Network (from [NeuralNetworkVisualisation](https://github.com/TheAypisamFpv/NeuralNetworkVisualisation))
 - The `RunNeuralNet.py` script initializes the neural network application.
 - The application allows users to select a model file and visualize the neural network's predictions.
 - The visualization includes neuron connections and output values, with colors indicating the neuron's output value.
 - The application uses hierarchical clustering to cluster neurons when the number of neurons exceeds a threshold.
 
-
+<br>
 
 ## Models Directory
 The `Models\` directory contains the following files for each trained model (each model has its own subdirectory):
@@ -133,7 +133,7 @@ The `Models\` directory contains the following files for each trained model (eac
 - `FeatureImportance.csv`: The feature importance values calculated using SHAP.
 - `ValidationAccuracyHistory.png`: A plot showing the validation accuracy history during grid search.
 
-
+<br>
 
 ## Bibliography
 ### Documentations
