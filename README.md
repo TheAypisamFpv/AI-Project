@@ -36,3 +36,20 @@ The LinearRegression.py script performs the following steps:
 5. Evaluate the best model using Mean Squared Error (MSE), R² score, and Mean Absolute Error (MAE).
 6. Save the regression coefficients to regression_coefficients.csv.
 7. Visualize the predictions vs. actual values
+
+# Bibliography
+## Documentation
+- Course on linear regression : https://eric.univ-lyon2.fr/ricco/cours/slides/regularized_regression.pdf
+A course to help you understand the basics of linear regression, and to discover other algorithms that can be used to refine the results obtained, such as Ridge or ElasticNet
+
+- Scikit-learn documentation on the linear regression : https://scikit-learn.org/stable/modules/generated/sklearn.linear_model.LinearRegression.html
+the Scikit-learn library documentation for using linear regression, with a redirection to the pages for Ridge, lasso and ElasticNet
+
+## Scientific article
+
+- An elastic net regression model for predicting the risk of ICU admission and death for hospitalized patients with COVID-19, Wei Zou, Nature, June 2024 : https://www.nature.com/articles/s41598-024-64776-0
+A scientific article describing the use of linear regression to predict the number of people with COVID-19 in intensive care or who die in hospitals
+
+
+- Predicting high sensitivity C-reactive protein levels and their associations in a large population using decision tree and linear regression, Somayeh Ghiasi Hafezi, Nature, December 2024 : https://www.nature.com/articles/s41598-024-81714-2
+Study designed to predict the sensitivity of C-reactive protein, which plays a major role in liver inflammation. This study uses linear regression and decision trees to feed their predictions
