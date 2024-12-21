@@ -136,15 +136,33 @@ The `Models\` directory contains the following files for each trained model (eac
 <br>
 
 ## Bibliography
-### Documentations
-- TensorFlow Documentation: https://www.tensorflow.org/guide
-- Scikit-learn Documentation: https://scikit-learn.org/stable/documentation.html
-- SHAP Documentation: https://shap.readthedocs.io/en/latest/
+### Official Documentation
+- #### [TensorFlow Documentation](https://www.tensorflow.org/guide) (Mar 2, 2023):
+    Official guide provided by the TensorFlow team. It’s reliable because it’s maintained and updated by TensorFlow developers. It includes in-depth tutorials and API references, making it an essential resource for understanding neural network implementation and training.
 
-### Youtube Videos:
--  [Neural networks](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) from 3Blue1Brown (video 1 to 4 but i watched everything)
-- [How to Create a Neural Network (and Train it to Identify Doodles)](https://www.youtube.com/watch?v=hfMk-kjRv4c) from Sebastian Lague
-- [How to train simple AIs](https://www.youtube.com/watch?v=EvV5Qtp_fYg) from Pezzza's Work
+- #### [Scikit-learn Documentation](https://scikit-learn.org/stable/documentation.html) (Dec, 2024):
+    Scikit-learn’s documentation is an authoritative source for machine learning algorithms, including those used in neural networks. It’s well-structured, frequently updated, and provides examples for practical applications.
 
-### AIs:
-- Github Copilot
+### YouTube Videos
+- #### [3Blue1Brown: Neural Networks](https://www.youtube.com/playlist?list=PLZHQObOWTQDNU6R1_67000Dx_ZCJB-3pi) (Oct 5, 2017 - Nov 20, 2024):
+    Extensive playlist of 8 videos on neural networks and LLMs (covers Gradient descent, Backpropagation and Transformers (the ‘T’ in chat GPT)).
+
+    Watch time. ~2h total
+
+- #### [Sebastian Lague: How to Create a Neural Network](https://www.youtube.com/watch?v=hfMk-kjRv4c) (Aug 12, 2022):
+    Sebastian demonstrates how to build and train a neural network to recognize doodles. He highlights the architecture, training process, and key optimizations to enhance accuracy in identifying drawings.
+
+    Watch time : ~55 mins
+
+- #### [Pezzza's Work: How to Train Simple AIs](https://www.youtube.com/watch?v=EvV5Qtp_fYg) (May 3, 2024):
+    Pezzza demonstrates a simple method for training AIs with evolutionary neural networks using an inverted pendulum. It emphasizes the role of fitness functions and agent selection in enhancing performance and stability.
+
+    Watch time : ~13 mins
+
+### Artificial Intelligence Tools
+- #### [GitHub Copilot](https://github.com/features/copilot) (latest training dataset date not provided by Microsoft):
+    AI-based coding assistant. Helpful for writing code snippets, but its suggestions should always be carefully reviewed as it may produce errors.
+Mainly used for debugging.
+
+- #### [ChatGPT 4o](https://openai.com/chatgpt) (latest training dataset date : Oct. 2023, with internet access):
+    Conversational AI tool useful for brainstorming and explaining concepts. While helpful for understanding neural networks, it is not always accurate or complete and should be used alongside verified sources.
